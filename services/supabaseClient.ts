@@ -5,20 +5,20 @@ import { parseISO, isSameDay, getDay, getDate, getMonth } from 'date-fns';
 import { Lunar } from 'lunar-javascript';
 
 /** 
- * [중요] 중학생 친구를 위한 안내:
- * 1. supabase.com에서 만든 Project URL을 아래 supabaseUrl에 붙여넣으세요.
- * 2. API Key (anon public)를 아래 supabaseAnonKey에 붙여넣으세요.
+ * [안내] 서버 저장(Supabase) 설정:
+ * 1. supabaseUrl: Supabase 프로젝트의 API URL
+ * 2. supabaseAnonKey: 프로젝트의 Anon Public Key
  */
-const supabaseUrl = 'https://klarhvoglyapszhdwabp.supabase.co'; // 여기에 주소를 넣으세요!
-const supabaseAnonKey = 'sb_publishable_uQl3IfjeLOz4_PA-o01rmA_fWh49XPE'; // 여기에 열쇠를 넣으세요!
+const supabaseUrl = 'https://klarhvoglyapszhdwabp.supabase.co';
+const supabaseAnonKey = 'sb_publishable_uQl3IfjeLOz4_PA-o01rmA_fWh49XPE';
 
-// 주소와 열쇠가 제대로 입력되었는지 확인하는 깐깐한 검사기
-// Supabase 익명 키(anon key)는 항상 'eyJ'로 시작하는 아주 긴 문자열입니다.
-// 현재 입력된 'sb_publishable...' 키는 Supabase 익명 키가 아니므로 로컬 모드로 작동하게 합니다.
+// Supabase 설정 여부 확인 로직 개선
+// 이전의 'eyJ' 체크가 너무 엄격하여 실제 유효한 키(sb_publishable...)를 거부하는 문제를 해결했습니다.
 export const isSupabaseConfigured = 
   supabaseUrl.includes('supabase.co') && 
   !supabaseUrl.includes('your-project-url') && 
-  supabaseAnonKey.startsWith('eyJ');
+  supabaseAnonKey.length > 10 &&
+  !supabaseAnonKey.includes('your-anon-key');
 
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
@@ -29,7 +29,7 @@ const LOCAL_STORAGE_KEY = 'daily_harmony_memos_v2';
 // 클라우드에서 모든 메모 가져오기
 export const fetchMemosFromCloud = async (userId: string = 'local_user'): Promise<Memo[]> => {
   if (!supabase) {
-    console.log("로컬 모드로 작동 중입니다. (Supabase 키가 올바르지 않거나 설정되지 않음)");
+    console.log("로컬 모드로 작동 중입니다. (Supabase 설정이 완료되지 않음)");
     return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   }
 
@@ -42,16 +42,15 @@ export const fetchMemosFromCloud = async (userId: string = 'local_user'): Promis
 
     if (error) throw error;
     
-    // 클라우드 데이터를 로컬에도 저장해서 인터넷 안 될 때를 대비해요
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
     return data || [];
   } catch (err) {
-    console.error("클라우드 연결에 실패해서 로컬 데이터를 불러옵니다.");
+    console.error("클라우드 데이터를 불러오는 중 오류 발생:", err);
     return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   }
 };
 
-// 특정 날짜에 맞는 메모 필터링 (기존 로직 유지)
+// 특정 날짜에 맞는 메모 필터링
 export const getFilteredMemos = (allMemos: Memo[], targetDate: Date): Memo[] => {
   const targetDay = getDay(targetDate);
   const targetDateNum = getDate(targetDate);
@@ -77,7 +76,7 @@ export const getFilteredMemos = (allMemos: Memo[], targetDate: Date): Memo[] => 
   });
 };
 
-// 메모 저장 (클라우드 우선, 안되면 로컬)
+// 메모 저장
 export const saveMemoCloud = async (memo: Partial<Memo>): Promise<Memo | null> => {
   const newMemo = {
     user_id: 'local_user',
@@ -87,18 +86,20 @@ export const saveMemoCloud = async (memo: Partial<Memo>): Promise<Memo | null> =
     completed: false,
     created_at: new Date().toISOString(),
     repeat_type: memo.repeat_type || RepeatType.NONE,
-    reminder_time: memo.reminder_time,
-    reminder_offsets: memo.reminder_offsets,
+    reminder_time: memo.reminder_time || null,
+    reminder_offsets: memo.reminder_offsets || null,
   };
 
   if (supabase) {
     try {
       const { data, error } = await supabase.from('memos').insert([newMemo]).select();
       if (!error && data) return data[0];
-    } catch (e) { console.error("클라우드 저장 실패"); }
+      if (error) console.error("Supabase Error:", error.message);
+    } catch (e) { 
+      console.error("클라우드 저장 실패", e); 
+    }
   }
 
-  // 로컬 저장 (백업용)
   const localMemos = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   const localNewMemo = { ...newMemo, id: 'local_' + Math.random().toString(36).substr(2, 9) } as Memo;
   localMemos.push(localNewMemo);
@@ -109,20 +110,38 @@ export const saveMemoCloud = async (memo: Partial<Memo>): Promise<Memo | null> =
 // 메모 삭제
 export const deleteMemoCloud = async (id: string): Promise<boolean> => {
   if (supabase && !id.startsWith('local_')) {
-    await supabase.from('memos').delete().eq('id', id);
+    try {
+      const { error } = await supabase.from('memos').delete().eq('id', id);
+      if (error) console.error("Supabase Delete Error:", error.message);
+    } catch (e) {
+      console.error("클라우드 삭제 실패", e);
+    }
   }
   const localMemos = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localMemos.filter((m: any) => m.id !== id)));
   return true;
 };
 
-// 메모 상태 업데이트
+// 메모 상태 및 날짜/내용 업데이트
 export const updateMemoCloud = async (id: string, updates: Partial<Memo>): Promise<boolean> => {
+  // undefined 대신 null을 명시적으로 전달하여 필드를 초기화할 수 있도록 합니다.
+  const processedUpdates = { ...updates };
+  if (updates.reminder_time === undefined) (processedUpdates as any).reminder_time = null;
+  if (updates.reminder_offsets === undefined) (processedUpdates as any).reminder_offsets = null;
+
   if (supabase && !id.startsWith('local_')) {
-    await supabase.from('memos').update(updates).eq('id', id);
+    try {
+      const { error } = await supabase.from('memos').update(processedUpdates).eq('id', id);
+      if (error) {
+        console.error("Supabase Update Error:", error.message);
+        // 만약 404 에러 등이 나면 로컬에서만이라도 업데이트를 진행합니다.
+      }
+    } catch (e) {
+      console.error("클라우드 업데이트 실패", e);
+    }
   }
   const localMemos = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
-  const updated = localMemos.map((m: any) => m.id === id ? { ...m, ...updates } : m);
+  const updated = localMemos.map((m: any) => m.id === id ? { ...m, ...processedUpdates } : m);
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   return true;
 };

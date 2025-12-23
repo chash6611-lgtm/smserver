@@ -31,8 +31,6 @@ import {
   Sparkles,
   Moon,
   Leaf,
-  Key,
-  Link as LinkIcon,
   Bell,
   Clock,
   ChevronDown,
@@ -45,7 +43,8 @@ import {
   Database,
   Cloud,
   CloudOff,
-  RefreshCw
+  RefreshCw,
+  CalendarDays
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -66,7 +65,7 @@ import ProfileSetup from './components/ProfileSetup.tsx';
 const JIE_QI_MAP: Record<string, string> = {
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
   '立夏': '입하', '소滿': '소만', '芒종': '망종', '夏至': '하지', '소暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜강': '상강',
+  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋분': '추분', '寒露': '한로', '霜강': '상강',
   '立冬': '입동', '소雪': '소설', '大雪': '대설', '冬至': '동지', '소寒': '소한', '大寒': '대한'
 };
 
@@ -103,8 +102,10 @@ const App: React.FC = () => {
   const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
   const [showReminderOptions, setShowReminderOptions] = useState(false);
   
+  // 편집 상태
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [editDate, setEditDate] = useState('');
   const [editReminderEnabled, setEditReminderEnabled] = useState(false);
   const [editReminderTime, setEditReminderTime] = useState('09:00');
   const [editSelectedOffsets, setEditSelectedOffsets] = useState<ReminderOffset[]>([]);
@@ -299,6 +300,7 @@ const App: React.FC = () => {
   const handleStartEdit = (memo: Memo) => {
     setEditingMemoId(memo.id);
     setEditContent(memo.content);
+    setEditDate(memo.date);
     setEditReminderEnabled(!!memo.reminder_time);
     setEditReminderTime(memo.reminder_time || '09:00');
     setEditSelectedOffsets(memo.reminder_offsets || [ReminderOffset.AT_TIME]);
@@ -308,12 +310,14 @@ const App: React.FC = () => {
     if (!editingMemoId) return;
     const success = await updateMemoCloud(editingMemoId, {
       content: editContent,
+      date: editDate,
       reminder_time: editReminderEnabled ? editReminderTime : undefined,
       reminder_offsets: editReminderEnabled ? editSelectedOffsets : undefined,
     });
     if (success) {
       setEditingMemoId(null);
-      loadMemos(false);
+      // 서버에서 새로 데이터를 받아와 리스트를 갱신합니다.
+      await loadMemos(false);
     }
   };
 
@@ -534,7 +538,7 @@ const App: React.FC = () => {
                     <Bell size={14} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
                     <span>알림 설정</span> {showReminderOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
-                  <button onClick={() => setReminderEnabled(!reminderEnabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-3 w-3 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+                  <button onClick={() => setReminderEnabled(!reminderEnabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-3 w-3 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} /></button>
                 </div>
                 {reminderEnabled && showReminderOptions && (
                   <div className="mt-4 animate-in slide-in-from-top-1">
@@ -556,18 +560,44 @@ const App: React.FC = () => {
                 <div key={memo.id} className={`group bg-white border p-4 rounded-2xl transition-all ${editingMemoId === memo.id ? 'border-indigo-500 ring-4 ring-indigo-50 shadow-inner' : 'border-gray-50 hover:border-indigo-100'}`}>
                   {editingMemoId === memo.id ? (
                     <div className="space-y-4">
-                      <input type="text" value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full bg-gray-50 rounded-xl px-4 py-2 text-sm font-medium focus:bg-white" />
-                      <div className="flex items-center gap-2">
-                        <input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="bg-gray-50 rounded-lg px-2 py-1 text-xs font-bold" />
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="checkbox" checked={editReminderEnabled} onChange={() => setEditReminderEnabled(!editReminderEnabled)} className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold text-gray-500">알림</span>
-                        </label>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-2xl">
+                          <CalendarDays size={18} className="text-indigo-500 shrink-0" />
+                          <input 
+                            type="date" 
+                            value={editDate} 
+                            onChange={(e) => setEditDate(e.target.value)} 
+                            className="flex-1 bg-transparent text-indigo-700 text-sm font-black border-none focus:ring-0 p-0" 
+                          />
+                        </div>
+                        <input 
+                          type="text" 
+                          value={editContent} 
+                          onChange={(e) => setEditContent(e.target.value)} 
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-4 text-sm font-bold focus:bg-white border-none focus:ring-2 focus:ring-indigo-100 transition-all" 
+                          placeholder="수정할 내용을 입력하세요"
+                        />
                       </div>
-                      {editReminderEnabled && <ReminderPicker offsets={editSelectedOffsets} onToggle={(o) => handleToggleOffset(o, true)} />}
-                      <div className="flex gap-2">
-                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-1"><Check size={14} />저장</button>
-                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1"><X size={14} />취소</button>
+                      
+                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                             <Bell size={14} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                             <span className="text-xs font-bold text-gray-600">알림 예약</span>
+                          </div>
+                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-3 w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+                        </div>
+                        {editReminderEnabled && (
+                          <div className="animate-in slide-in-from-top-1">
+                             <div className="flex items-center gap-3 mb-3"><Clock size={14} className="text-gray-400" /><input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="bg-white rounded-lg px-3 py-1 text-xs font-bold border-none" /></div>
+                             <ReminderPicker offsets={editSelectedOffsets} onToggle={(o) => handleToggleOffset(o, true)} />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-3 pt-2">
+                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl text-sm font-black shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"><Check size={18} />저장</button>
+                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"><X size={18} />취소</button>
                       </div>
                     </div>
                   ) : (
