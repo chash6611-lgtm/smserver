@@ -13,9 +13,12 @@ const supabaseUrl = 'https://klarhvoglyapszhdwabp.supabase.co'; // 여기에 주
 const supabaseAnonKey = 'sb_publishable_uQl3IfjeLOz4_PA-o01rmA_fWh49XPE'; // 여기에 열쇠를 넣으세요!
 
 // 주소와 열쇠가 제대로 입력되었는지 확인하는 깐깐한 검사기
+// Supabase 익명 키(anon key)는 항상 'eyJ'로 시작하는 아주 긴 문자열입니다.
+// 현재 입력된 'sb_publishable...' 키는 Supabase 익명 키가 아니므로 로컬 모드로 작동하게 합니다.
 export const isSupabaseConfigured = 
-  supabaseUrl !== 'https://your-project-url.supabase.co' && 
-  supabaseAnonKey !== 'your-anon-key-here';
+  supabaseUrl.includes('supabase.co') && 
+  !supabaseUrl.includes('your-project-url') && 
+  supabaseAnonKey.startsWith('eyJ');
 
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
@@ -26,7 +29,7 @@ const LOCAL_STORAGE_KEY = 'daily_harmony_memos_v2';
 // 클라우드에서 모든 메모 가져오기
 export const fetchMemosFromCloud = async (userId: string = 'local_user'): Promise<Memo[]> => {
   if (!supabase) {
-    console.log("로컬 모드로 작동 중입니다. (Supabase 설정 전)");
+    console.log("로컬 모드로 작동 중입니다. (Supabase 키가 올바르지 않거나 설정되지 않음)");
     return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   }
 
