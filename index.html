@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Harmony</title>
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="description" content="AI 운세와 바이오리듬을 포함한 프리미엄 일별 메모장">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,6 +48,19 @@
 <body>
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // 특정 샌드박스 환경에서 URL 생성자가 실패할 수 있으므로 표준 상대 경로 방식을 사용합니다.
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Service Worker registered with scope:', reg.scope))
+                    .catch(err => {
+                        // AI Studio Preview 등 서비스 워커가 제한된 환경에서는 경고만 표시합니다.
+                        console.warn('Service Worker registration skipped or failed:', err);
+                    });
+            });
+        }
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
