@@ -44,7 +44,8 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  CalendarDays
+  CalendarDays,
+  Key
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -55,7 +56,9 @@ import {
   saveMemoCloud, 
   deleteMemoCloud, 
   updateMemoCloud,
-  isSupabaseConfigured 
+  isSupabaseConfigured,
+  fetchProfileFromCloud,
+  saveProfileCloud
 } from './services/supabaseClient.ts';
 import { calculateBiorhythm } from './services/biorhythmService.ts';
 import { getDailyFortune } from './services/geminiService.ts';
@@ -102,7 +105,6 @@ const App: React.FC = () => {
   const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
   const [showReminderOptions, setShowReminderOptions] = useState(false);
   
-  // 편집 상태
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -125,6 +127,37 @@ const App: React.FC = () => {
   const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
+  // 앱 시작 시 데이터 로드
+  const initializeApp = useCallback(async () => {
+    setLoadingMemos(true);
+    setIsSyncing(true);
+    try {
+      // 1. 프로필 로드
+      const cloudProfile = await fetchProfileFromCloud();
+      if (cloudProfile) {
+        setProfile(cloudProfile);
+        // 클라우드에 저장된 API 키가 있다면 상태에 반영
+        if (cloudProfile.gemini_api_key) {
+          setApiKey(cloudProfile.gemini_api_key);
+          localStorage.setItem('GEMINI_API_KEY', cloudProfile.gemini_api_key);
+        }
+      }
+
+      // 2. 메모 로드
+      const memos = await fetchMemosFromCloud();
+      setAllMemos(memos);
+    } catch (error) {
+      console.error("앱 초기화 중 오류:", error);
+    } finally {
+      setLoadingMemos(false);
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    initializeApp();
+  }, [initializeApp]);
+
   const loadMemos = useCallback(async (showLoading = true) => {
     if (showLoading) setLoadingMemos(true);
     setIsSyncing(true);
@@ -138,10 +171,6 @@ const App: React.FC = () => {
       setIsSyncing(false);
     }
   }, []);
-
-  useEffect(() => {
-    loadMemos();
-  }, [loadMemos]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -265,6 +294,10 @@ const App: React.FC = () => {
     if (tempKey.trim()) {
       localStorage.setItem('GEMINI_API_KEY', tempKey.trim());
       setApiKey(tempKey.trim());
+      // 프로필 업데이트 로직 실행 (키를 프로필과 함께 저장하기 위해)
+      if (profile) {
+        handleSaveProfile({ ...profile, gemini_api_key: tempKey.trim() });
+      }
       setTempKey('');
     }
   };
@@ -316,7 +349,6 @@ const App: React.FC = () => {
     });
     if (success) {
       setEditingMemoId(null);
-      // 서버에서 새로 데이터를 받아와 리스트를 갱신합니다.
       await loadMemos(false);
     }
   };
@@ -335,6 +367,21 @@ const App: React.FC = () => {
         setAllMemos(prev => prev.filter(m => m.id !== id));
       }
     }
+  };
+
+  const handleSaveProfile = async (newProfile: UserProfile) => {
+    setIsSyncing(true);
+    const savedProfile = await saveProfileCloud(newProfile);
+    if (savedProfile) {
+      setProfile(savedProfile);
+      // 저장된 프로필의 API 키를 즉시 상태에 반영
+      if (savedProfile.gemini_api_key) {
+        setApiKey(savedProfile.gemini_api_key);
+        localStorage.setItem('GEMINI_API_KEY', savedProfile.gemini_api_key);
+      }
+      setShowProfileModal(false);
+    }
+    setIsSyncing(false);
   };
 
   const currentDayMemos = getFilteredMemos(allMemos, selectedDate);
@@ -515,7 +562,16 @@ const App: React.FC = () => {
               </div>
             ) : loadingFortune ? (
               <div className="animate-pulse space-y-2"><div className="h-4 bg-gray-100 rounded w-3/4"></div><div className="h-4 bg-gray-100 rounded w-full"></div></div>
-            ) : <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>}
+            ) : (
+              <div className="space-y-3">
+                <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
+                {profile?.gemini_api_key && (
+                   <div className="pt-2 flex items-center justify-end text-[10px] text-gray-400 font-bold space-x-1">
+                     <Key size={10} /><span>클라우드 동기화된 키 사용 중</span>
+                   </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-3xl shadow-xl p-7 border border-gray-50">
@@ -633,11 +689,7 @@ const App: React.FC = () => {
       </div>
       {showProfileModal && (
         <ProfileSetup 
-          onSave={(newProfile) => {
-            setProfile(newProfile);
-            localStorage.setItem('user_profile', JSON.stringify(newProfile));
-            setShowProfileModal(false);
-          }} 
+          onSave={handleSaveProfile} 
           onClose={() => setShowProfileModal(false)}
           currentProfile={profile}
         />

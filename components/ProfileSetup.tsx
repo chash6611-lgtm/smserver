@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, Key, Cloud } from 'lucide-react';
 
 interface Props {
   onSave: (profile: UserProfile) => void;
@@ -15,6 +15,7 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
+  const [geminiApiKey, setGeminiApiKey] = useState(currentProfile?.gemini_api_key || '');
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -43,7 +44,8 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
       birth_date: birthDate,
       birth_time: birthTime,
       notifications_enabled: notifEnabled,
-      daily_reminder_time: notifTime
+      daily_reminder_time: notifTime,
+      gemini_api_key: geminiApiKey
     });
   };
 
@@ -109,6 +111,29 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
                     <Clock className="absolute left-4 top-3.5 text-gray-300" size={18} />
                   </div>
                 </div>
+              </div>
+
+              {/* API 키 설정 섹션 */}
+              <div className="pt-2">
+                <label className="flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                  <span>Google AI Studio API 키</span>
+                  <div className="flex items-center space-x-1 text-[9px] text-emerald-500 lowercase normal-case">
+                    <Cloud size={10} /><span>클라우드 동기화</span>
+                  </div>
+                </label>
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-emerald-500 rounded-2xl py-3 pl-11 text-gray-800 text-sm transition-all"
+                    placeholder="AI 운세를 위한 API 키 입력"
+                  />
+                  <Key className="absolute left-4 top-3.5 text-gray-300" size={18} />
+                </div>
+                <p className="mt-2 text-[10px] text-gray-400 font-medium px-1">
+                  * API 키를 입력하면 다른 기기에서도 별도 입력 없이 운세 기능을 이용할 수 있습니다.
+                </p>
               </div>
             </div>
 
