@@ -108,6 +108,7 @@ const App: React.FC = () => {
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editDate, setEditDate] = useState('');
+  const [editType, setEditType] = useState<MemoType>(MemoType.TODO);
   const [editReminderEnabled, setEditReminderEnabled] = useState(false);
   const [editReminderTime, setEditReminderTime] = useState('09:00');
   const [editSelectedOffsets, setEditSelectedOffsets] = useState<ReminderOffset[]>([]);
@@ -329,6 +330,7 @@ const App: React.FC = () => {
     setEditingMemoId(memo.id);
     setEditContent(memo.content);
     setEditDate(memo.date);
+    setEditType(memo.type);
     setEditReminderEnabled(!!memo.reminder_time);
     setEditReminderTime(memo.reminder_time || '09:00');
     setEditSelectedOffsets(memo.reminder_offsets || [ReminderOffset.AT_TIME]);
@@ -339,6 +341,7 @@ const App: React.FC = () => {
     const success = await updateMemoCloud(editingMemoId, {
       content: editContent,
       date: editDate,
+      type: editType,
       reminder_time: editReminderEnabled ? editReminderTime : undefined,
       reminder_offsets: editReminderEnabled ? editSelectedOffsets : undefined,
     });
@@ -429,7 +432,7 @@ const App: React.FC = () => {
                {dayMemos.slice(0, 2).map((m: Memo, idx: number) => (
                  <div key={idx} className="flex items-center space-x-0.5 md:space-x-1">
                    <div className={`shrink-0 w-1 md:w-1.5 h-1 md:h-1.5 rounded-full ${m.type === MemoType.IDEA ? 'bg-amber-400' : m.type === MemoType.APPOINTMENT ? 'bg-rose-400' : 'bg-blue-400'}`} />
-                   <span className={`text-[7px] md:text-[10px] text-gray-600 truncate font-medium ${m.completed ? 'line-through opacity-40' : ''}`}>{m.content}</span>
+                   <span className={`text-[7px] md:text-[10px] text-gray-600 truncate font-medium ${m.completed && m.type === MemoType.TODO ? 'line-through opacity-40' : ''}`}>{m.content}</span>
                  </div>
                ))}
                {dayMemos.length > 2 && <div className="text-[6px] md:text-[8px] text-gray-300 font-bold ml-2">+{dayMemos.length - 2}</div>}
@@ -616,6 +619,13 @@ const App: React.FC = () => {
                   {editingMemoId === memo.id ? (
                     <div className="space-y-4">
                       <div className="flex flex-col gap-2 md:gap-3">
+                        <div className="flex gap-2 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+                          {[[MemoType.TODO, ListTodo, '할일'], [MemoType.IDEA, Lightbulb, '아이디어'], [MemoType.APPOINTMENT, CalendarCheck, '약속']].map(([type, Icon, label]: any) => (
+                            <button key={type} onClick={() => setEditType(type)} className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${editType === type ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                              <Icon size={12} /><span>{label}</span>
+                            </button>
+                          ))}
+                        </div>
                         <div className="flex items-center gap-2 p-2 md:p-3 bg-indigo-50 rounded-xl md:rounded-2xl">
                           <CalendarDays size={16} md:size={18} className="text-indigo-500 shrink-0" />
                           <input 
@@ -658,9 +668,17 @@ const App: React.FC = () => {
                   ) : (
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                        <button onClick={() => handleToggleMemo(memo.id, memo.completed)} className="mt-0.5 shrink-0">{memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} md:size={20} /> : <Circle className="text-gray-200" size={18} md:size={20} />}</button>
+                        {memo.type === MemoType.TODO ? (
+                          <button onClick={() => handleToggleMemo(memo.id, memo.completed)} className="mt-0.5 shrink-0">
+                            {memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} md:size={20} /> : <Circle className="text-gray-200" size={18} md:size={20} />}
+                          </button>
+                        ) : (
+                          <div className="mt-0.5 shrink-0">
+                            {memo.type === MemoType.IDEA ? <Lightbulb className="text-amber-400" size={18} md:size={20} /> : <CalendarCheck className="text-rose-400" size={18} md:size={20} />}
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
-                          <p className={`text-[13px] md:text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through font-medium' : 'text-gray-700'}`}>{memo.content}</p>
+                          <p className={`text-[13px] md:text-sm font-bold truncate ${memo.completed && memo.type === MemoType.TODO ? 'text-gray-300 line-through font-medium' : 'text-gray-700'}`}>{memo.content}</p>
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             <span className={`px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-black uppercase tracking-wider ${memo.type === MemoType.IDEA ? 'bg-amber-100 text-amber-700' : memo.type === MemoType.APPOINTMENT ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{memo.type}</span>
                             {memo.reminder_time && (
