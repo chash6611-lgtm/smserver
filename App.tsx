@@ -45,7 +45,9 @@ import {
   CloudOff,
   RefreshCw,
   CalendarDays,
-  Key
+  Key,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 import { Lunar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
@@ -276,7 +278,7 @@ const App: React.FC = () => {
         );
         setFortune(result);
       } catch (err) {
-        setFortune("운세를 불러오지 못했습니다.");
+        setFortune("ERROR: 운세를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
       } finally {
         setLoadingFortune(false);
       }
@@ -566,7 +568,26 @@ const App: React.FC = () => {
               <div className="animate-pulse space-y-2"><div className="h-4 bg-gray-100 rounded w-3/4"></div><div className="h-4 bg-gray-100 rounded w-full"></div></div>
             ) : (
               <div className="space-y-3">
-                <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
+                {fortune.startsWith("ERROR:") ? (
+                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl space-y-3">
+                    <div className="flex items-center space-x-2 text-rose-600 font-bold text-xs md:text-sm">
+                      <AlertCircle size={16} />
+                      <span>운세 로딩 실패</span>
+                    </div>
+                    <p className="text-rose-700 text-[11px] md:text-xs leading-relaxed font-medium">
+                      {fortune.replace("ERROR: ", "")}
+                    </p>
+                    <button 
+                      onClick={fetchFortune}
+                      className="flex items-center space-x-2 px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg text-[10px] md:text-xs font-bold hover:bg-rose-200 transition-colors"
+                    >
+                      <RotateCcw size={12} />
+                      <span>다시 시도</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
+                )}
                 {profile?.gemini_api_key && (
                    <div className="pt-2 flex items-center justify-end text-[8px] md:text-[10px] text-gray-400 font-bold space-x-1">
                      <Key size={10} /><span>클라우드 동기화된 키 사용 중</span>

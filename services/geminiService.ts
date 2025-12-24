@@ -2,12 +2,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export async function getDailyFortune(birthDate: string, birthTime: string, targetDate: string, externalApiKey?: string) {
-  // 우선적으로 전달받은 키를 사용하고, 없으면 환경 변수를 사용합니다.
   const apiKey = externalApiKey || process.env.API_KEY;
   
   if (!apiKey || apiKey === "") {
-    console.error("API_KEY가 감지되지 않았습니다.");
-    return "API 키가 설정되지 않았습니다.";
+    return "ERROR: API 키가 설정되지 않았습니다. 프로필 설정에서 API 키를 입력해주세요.";
   }
 
   try {
@@ -30,13 +28,18 @@ export async function getDailyFortune(birthDate: string, birthTime: string, targ
     if (response && response.text) {
       return response.text;
     } else {
-      return "AI가 응답을 생성했지만 내용을 읽을 수 없습니다.";
+      return "ERROR: AI가 응답을 생성했지만 내용을 읽을 수 없습니다.";
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
-    if (error.message?.includes("API key not valid")) {
-      return "등록된 API 키가 유효하지 않습니다. 다시 확인해주세요.";
+    const msg = error.message || "";
+    
+    if (msg.includes("429") || msg.includes("quota")) {
+      return "ERROR: AI 서비스 사용량이 초과되었습니다. 무료 티어의 제한으로 인해 잠시 후 다시 시도하거나, 개인 API 키를 등록해주세요.";
     }
-    return `운세를 가져오는 중 오류가 발생했습니다: ${error.message || "연결 오류"}`;
+    if (msg.includes("API key not valid") || msg.includes("403") || msg.includes("400")) {
+      return "ERROR: 등록된 API 키가 유효하지 않거나 권한이 없습니다. API 키를 다시 확인해주세요.";
+    }
+    return `ERROR: 운세를 가져오는 중 오류가 발생했습니다: ${msg || "연결 오류"}`;
   }
 }
