@@ -3,15 +3,16 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Daily Harmony</title>
     <meta name="theme-color" content="#4f46e5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Harmony">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="description" content="AI 운세와 바이오리듬을 포함한 프리미엄 일별 메모장">
-    <link rel="manifest" href="./manifest.json">
-    <link rel="apple-touch-icon" href="./icon.svg">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +22,7 @@
             font-family: 'Pretendard', sans-serif;
             background-color: #f8fafc;
             -webkit-tap-highlight-color: transparent;
+            padding-bottom: env(safe-area-inset-bottom);
         }
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
@@ -51,26 +53,42 @@
 </head>
 <body>
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
+    <script type="module" src="index.tsx"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js', { scope: './' })
-                    .then(reg => {
-                        console.log('Service Worker registered:', reg.scope);
-                        // 업데이트 확인
-                        reg.onupdatefound = () => {
-                            const installingWorker = reg.installing;
-                            installingWorker.onstatechange = () => {
-                                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    if (confirm('새로운 버전이 준비되었습니다. 업데이트할까요?')) {
-                                        window.location.reload();
-                                    }
+                try {
+                    // 특수 샌드박스 환경에서는 window.location.href가 유효하지 않은 URL일 수 있으므로 보호 로직 추가
+                    const currentOrigin = window.location.origin;
+                    if (!currentOrigin || currentOrigin === 'null') {
+                        console.warn('Invalid origin for Service Worker registration.');
+                        return;
+                    }
+
+                    // 단순 상대 경로로 등록 시도 (샌드박스 보안 정책 준수)
+                    navigator.serviceWorker.register('sw.js', { scope: './' })
+                        .then(reg => {
+                            console.log('Service Worker registered:', reg.scope);
+                            reg.addEventListener('updatefound', () => {
+                                const newWorker = reg.installing;
+                                if (newWorker) {
+                                    newWorker.addEventListener('statechange', () => {
+                                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                            if (confirm('새로운 버전이 준비되었습니다. 업데이트하시겠습니까?')) {
+                                                window.location.reload();
+                                            }
+                                        }
+                                    });
                                 }
-                            };
-                        };
-                    })
-                    .catch(err => console.warn('Service Worker registration failed:', err));
+                            });
+                        })
+                        .catch(err => {
+                            // 샌드박스 환경에서는 등록 실패가 일반적일 수 있음
+                            console.log('SW registration skipped or failed:', err.message);
+                        });
+                } catch (e) {
+                    console.error('SW Setup error:', e);
+                }
             });
         }
     </script>
