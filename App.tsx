@@ -132,18 +132,14 @@ const App: React.FC = () => {
     setLoadingMemos(true);
     setIsSyncing(true);
     try {
-      // 1. 프로필 로드
       const cloudProfile = await fetchProfileFromCloud();
       if (cloudProfile) {
         setProfile(cloudProfile);
-        // 클라우드에 저장된 API 키가 있다면 상태에 반영
         if (cloudProfile.gemini_api_key) {
           setApiKey(cloudProfile.gemini_api_key);
           localStorage.setItem('GEMINI_API_KEY', cloudProfile.gemini_api_key);
         }
       }
-
-      // 2. 메모 로드
       const memos = await fetchMemosFromCloud();
       setAllMemos(memos);
     } catch (error) {
@@ -294,7 +290,6 @@ const App: React.FC = () => {
     if (tempKey.trim()) {
       localStorage.setItem('GEMINI_API_KEY', tempKey.trim());
       setApiKey(tempKey.trim());
-      // 프로필 업데이트 로직 실행 (키를 프로필과 함께 저장하기 위해)
       if (profile) {
         handleSaveProfile({ ...profile, gemini_api_key: tempKey.trim() });
       }
@@ -374,7 +369,6 @@ const App: React.FC = () => {
     const savedProfile = await saveProfileCloud(newProfile);
     if (savedProfile) {
       setProfile(savedProfile);
-      // 저장된 프로필의 API 키를 즉시 상태에 반영
       if (savedProfile.gemini_api_key) {
         setApiKey(savedProfile.gemini_api_key);
         localStorage.setItem('GEMINI_API_KEY', savedProfile.gemini_api_key);
@@ -420,24 +414,25 @@ const App: React.FC = () => {
         const isToday = isSameDay(day, new Date());
         const dayMemos = getFilteredMemos(allMemos, day);
         days.push(
-          <div key={day.toString()} className={`relative min-h-[95px] md:min-h-[125px] p-2 border-r border-b cursor-pointer transition-all duration-200 ${!isSameMonth(day, monthStart) ? "bg-gray-50/50 text-gray-300" : "text-gray-700 bg-white"} ${isSelected ? "bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/20 z-10" : "hover:bg-gray-50"}`} onClick={() => setSelectedDate(cloneDay)}>
+          <div key={day.toString()} className={`relative min-h-[80px] md:min-h-[125px] p-1.5 md:p-2 border-r border-b cursor-pointer transition-all duration-200 ${!isSameMonth(day, monthStart) ? "bg-gray-50/50 text-gray-300" : "text-gray-700 bg-white"} ${isSelected ? "bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/20 z-10" : "hover:bg-gray-50"}`} onClick={() => setSelectedDate(cloneDay)}>
             <div className="flex justify-between items-start">
-              <div className="flex flex-col items-center text-[10px] md:text-sm">
-                <span className={`w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-colors font-bold ${isSelected ? "bg-indigo-600 text-white shadow-md shadow-indigo-200" : ""} ${isToday && !isSelected ? "bg-gray-200 text-gray-800" : ""} ${(isSunday || isHoliday) && !isSelected ? "text-red-500" : ""} ${isSaturday && !isHoliday && !isSelected ? "text-blue-600" : ""}`}>{format(day, "d")}</span>
-                <span className="text-[8px] md:text-[9px] text-gray-400 mt-0.5">{lunar.getMonth()}.{lunar.getDay()}</span>
+              <div className="flex flex-col items-center text-[9px] md:text-sm">
+                <span className={`w-5 h-5 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-colors font-bold ${isSelected ? "bg-indigo-600 text-white shadow-md shadow-indigo-200" : ""} ${isToday && !isSelected ? "bg-gray-200 text-gray-800" : ""} ${(isSunday || isHoliday) && !isSelected ? "text-red-500" : ""} ${isSaturday && !isHoliday && !isSelected ? "text-blue-600" : ""}`}>{format(day, "d")}</span>
+                <span className="text-[7px] md:text-[9px] text-gray-400 mt-0.5">{lunar.getMonth()}.{lunar.getDay()}</span>
               </div>
-              <div className="flex flex-col items-end space-y-0.5 max-w-[60%]">
-                {(holiday || dynamicHoliday) && <span className="text-[8px] md:text-[9px] text-red-500 font-black leading-tight text-right break-keep">{holiday || dynamicHoliday}</span>}
-                {jieQi && <span className="flex items-center space-x-0.5 text-[8px] md:text-[9px] text-emerald-600 font-black"><Leaf size={8} /><span>{jieQi}</span></span>}
+              <div className="flex flex-col items-end space-y-0.5 max-w-[65%]">
+                {(holiday || dynamicHoliday) && <span className="text-[7px] md:text-[9px] text-red-500 font-black leading-tight text-right break-keep">{holiday || dynamicHoliday}</span>}
+                {jieQi && <span className="flex items-center space-x-0.5 text-[7px] md:text-[9px] text-emerald-600 font-black"><Leaf size={7} /><span>{jieQi}</span></span>}
               </div>
             </div>
             <div className="mt-1 md:mt-2 space-y-0.5 md:space-y-1 overflow-hidden">
-               {dayMemos.slice(0, 3).map((m: Memo, idx: number) => (
-                 <div key={idx} className="flex items-center space-x-1">
+               {dayMemos.slice(0, 2).map((m: Memo, idx: number) => (
+                 <div key={idx} className="flex items-center space-x-0.5 md:space-x-1">
                    <div className={`shrink-0 w-1 md:w-1.5 h-1 md:h-1.5 rounded-full ${m.type === MemoType.IDEA ? 'bg-amber-400' : m.type === MemoType.APPOINTMENT ? 'bg-rose-400' : 'bg-blue-400'}`} />
-                   <span className={`text-[8px] md:text-[10px] text-gray-600 truncate font-medium ${m.completed ? 'line-through opacity-40' : ''}`}>{m.content}</span>
+                   <span className={`text-[7px] md:text-[10px] text-gray-600 truncate font-medium ${m.completed ? 'line-through opacity-40' : ''}`}>{m.content}</span>
                  </div>
                ))}
+               {dayMemos.length > 2 && <div className="text-[6px] md:text-[8px] text-gray-300 font-bold ml-2">+{dayMemos.length - 2}</div>}
             </div>
           </div>
         );
@@ -446,7 +441,7 @@ const App: React.FC = () => {
       rows.push(<div className="grid grid-cols-7" key={day.getTime()}>{days}</div>);
       days = [];
     }
-    return <div className="border-t border-l rounded-2xl overflow-hidden bg-white shadow-xl shadow-gray-200/50">{rows}</div>;
+    return <div className="border-t border-l rounded-2xl md:rounded-3xl overflow-hidden bg-white shadow-xl shadow-gray-200/50">{rows}</div>;
   };
 
   const biorhythm = profile ? calculateBiorhythm(profile.birth_date, selectedDate) : null;
@@ -469,68 +464,72 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 animate-in fade-in duration-700">
+    <div className="max-w-7xl mx-auto px-4 py-6 md:py-12 animate-in fade-in duration-700">
       <div className="flex items-center justify-between mb-4 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-gray-100/50 text-[10px] md:text-xs">
          <div className="flex items-center space-x-3">
            <div className={`flex items-center space-x-1.5 font-bold ${isSupabaseConfigured ? 'text-emerald-600' : 'text-amber-500'}`}>
              {isSupabaseConfigured ? <Cloud size={14} /> : <CloudOff size={14} />}
-             <span>{isSupabaseConfigured ? '클라우드 동기화 중' : '로컬 저장 모드'}</span>
+             <span className="hidden sm:inline">{isSupabaseConfigured ? '클라우드 동기화 중' : '로컬 저장 모드'}</span>
+             <span className="sm:hidden">{isSupabaseConfigured ? '동기화 중' : '로컬 모드'}</span>
            </div>
            {isSyncing && <RefreshCw size={12} className="animate-spin text-indigo-400" />}
          </div>
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 space-y-6 md:space-y-0 relative z-40">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tighter">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 space-y-4 md:space-y-0 relative z-40">
+        <div className="flex flex-row items-center justify-between md:justify-start gap-4">
+          <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tighter">
             {format(currentDate, 'yyyy년 MM월')}
           </h2>
           <div className="flex items-center space-x-1 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-            <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronLeft size={18} /></button>
-            <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 text-[10px] md:text-xs font-bold text-indigo-600">오늘</button>
-            <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronRight size={18} /></button>
+            <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronLeft size={16} md:size={18} /></button>
+            <button onClick={() => setCurrentDate(new Date())} className="px-2 py-1 text-[10px] md:text-xs font-bold text-indigo-600">오늘</button>
+            <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronRight size={16} md:size={18} /></button>
           </div>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-end space-x-2">
           <div className="relative" ref={dataMenuRef}>
-            <button onClick={() => setShowDataMenu(!showDataMenu)} className="p-3 bg-white border border-gray-100 text-gray-400 rounded-2xl shadow-sm hover:text-indigo-600"><Database size={20} /></button>
+            <button onClick={() => setShowDataMenu(!showDataMenu)} className="p-2.5 md:p-3 bg-white border border-gray-100 text-gray-400 rounded-2xl shadow-sm hover:text-indigo-600"><Database size={18} md:size={20} /></button>
             {showDataMenu && (
-              <div className="absolute right-0 mt-3 w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-[100] animate-in slide-in-from-top-2">
-                <button onClick={handleExportData} className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"><Download size={16} /><span>백업하기</span></button>
-                <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"><Upload size={16} /><span>불러오기</span></button>
+              <div className="absolute right-0 mt-3 w-44 bg-white rounded-2xl shadow-2xl border border-gray-100 py-1 z-[100] animate-in slide-in-from-top-2">
+                <button onClick={handleExportData} className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"><Download size={14} /><span>백업하기</span></button>
+                <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"><Upload size={14} /><span>불러오기</span></button>
                 <input type="file" ref={fileInputRef} onChange={handleImportData} accept=".json" className="hidden" />
               </div>
             )}
           </div>
-          <button onClick={() => setShowProfileModal(true)} className="flex items-center space-x-2 bg-white border border-gray-100 text-gray-700 px-5 py-3 rounded-2xl shadow-sm font-bold text-sm">
-            <User size={18} className="text-indigo-500" /><span>{profile ? profile.name : '프로필 설정'}</span>
+          <button onClick={() => setShowProfileModal(true)} className="flex items-center space-x-2 bg-white border border-gray-100 text-gray-700 px-4 md:px-5 py-2.5 md:py-3 rounded-2xl shadow-sm font-bold text-xs md:text-sm">
+            <User size={16} md:size={18} className="text-indigo-500" />
+            <span className="truncate max-w-[80px] sm:max-w-none">{profile ? profile.name : '프로필'}</span>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-30">
-        <div className="lg:col-span-8">
-          <div className="bg-white rounded-3xl p-3 md:p-6 shadow-xl border border-gray-50">
-            <div className="min-w-[320px]">
-              <div className="grid grid-cols-7 mb-2 border-b pb-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 relative z-30">
+        <div className="lg:col-span-8 space-y-6 md:space-y-8">
+          <div className="bg-white rounded-2xl md:rounded-3xl p-2 md:p-6 shadow-xl border border-gray-50">
+            <div className="min-w-0">
+              <div className="grid grid-cols-7 mb-1 md:mb-2 border-b pb-2">
                 {["일", "월", "화", "수", "목", "금", "토"].map((day, i) => (
-                  <div key={day} className={`text-center font-bold text-[10px] md:text-xs ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400'}`}>{day}</div>
+                  <div key={day} className={`text-center font-bold text-[9px] md:text-xs ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-400'}`}>{day}</div>
                 ))}
               </div>
               {renderCells()}
             </div>
           </div>
           {profile && (
-            <div className="mt-8 bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-50">
-              <div className="flex items-center space-x-2 mb-6"><Activity className="text-indigo-600" size={24} /><h3 className="text-xl font-black">바이오리듬</h3></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                <BiorhythmChart birthDate={profile.birth_date} targetDate={selectedDate} />
-                <div className="space-y-2">
+            <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-5 md:p-8 border border-gray-50">
+              <div className="flex items-center space-x-2 mb-4 md:mb-6"><Activity className="text-indigo-600" size={20} md:size={24} /><h3 className="text-lg md:text-xl font-black">바이오리듬</h3></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-center">
+                <div className="w-full overflow-hidden">
+                  <BiorhythmChart birthDate={profile.birth_date} targetDate={selectedDate} />
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-1 gap-2 md:gap-3">
                   {[{ label: '신체', val: biorhythm?.physical, color: 'blue' }, { label: '감성', val: biorhythm?.emotional, color: 'rose' }, { label: '지성', val: biorhythm?.intellectual, color: 'emerald' }].map((item) => (
-                    <div key={item.label} className={`p-4 bg-${item.color}-50/50 rounded-2xl border border-${item.color}-100 flex justify-between items-center`}>
-                      <span className={`text-${item.color}-700 font-bold text-sm`}>{item.label}</span>
-                      <span className={`text-${item.color}-800 font-black text-lg`}>{Math.round(item.val || 0)}%</span>
+                    <div key={item.label} className={`p-3 md:p-4 bg-${item.color}-50/50 rounded-xl md:rounded-2xl border border-${item.color}-100 flex flex-col md:flex-row justify-between items-center text-center md:text-left`}>
+                      <span className={`text-${item.color}-700 font-bold text-[10px] md:text-sm`}>{item.label}</span>
+                      <span className={`text-${item.color}-800 font-black text-sm md:text-lg`}>{Math.round(item.val || 0)}%</span>
                     </div>
                   ))}
                 </div>
@@ -540,33 +539,33 @@ const App: React.FC = () => {
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
-            <p className="text-indigo-200 text-sm font-bold tracking-widest">{format(selectedDate, 'yyyy')}</p>
-            <h2 className="text-4xl font-black">{format(selectedDate, 'M월 d일')}</h2>
-            <div className="flex items-center space-x-3 mt-4">
-              <div className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-black">{format(selectedDate, 'EEEE', { locale: ko })}</div>
-              <div className="flex items-center space-x-1.5 text-indigo-100 font-bold text-xs"><Moon size={14} /><span>음력 {currentDayInfo.lunar.getMonth()}.{currentDayInfo.lunar.getDay()}</span></div>
+          <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-[24px] md:rounded-[32px] p-6 md:p-8 shadow-2xl relative overflow-hidden">
+            <p className="text-indigo-200 text-xs md:text-sm font-bold tracking-widest">{format(selectedDate, 'yyyy')}</p>
+            <h2 className="text-3xl md:text-4xl font-black">{format(selectedDate, 'M월 d일')}</h2>
+            <div className="flex flex-wrap items-center gap-2 mt-4">
+              <div className="bg-white/20 backdrop-blur-md px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-black">{format(selectedDate, 'EEEE', { locale: ko })}</div>
+              <div className="flex items-center space-x-1.5 text-indigo-100 font-bold text-[10px] md:text-xs"><Moon size={12} md:size={14} /><span>음력 {currentDayInfo.lunar.getMonth()}.{currentDayInfo.lunar.getDay()}</span></div>
             </div>
-            <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12" size={180} />
+            <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12 pointer-events-none" size={140} md:size={180} />
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl p-7 border border-gray-50 min-h-[120px]">
-            <div className="flex items-center space-x-2 mb-5"><Sparkles className="text-indigo-500" size={18} /><h3 className="text-lg font-black">오늘의 AI 운세</h3></div>
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50 min-h-[100px]">
+            <div className="flex items-center space-x-2 mb-4 md:mb-5"><Sparkles className="text-indigo-500" size={16} md:size={18} /><h3 className="text-base md:text-lg font-black">오늘의 AI 운세</h3></div>
             {!apiKey ? (
               <div className="space-y-4">
-                <p className="text-xs text-gray-500">운세를 위해 Gemini API 키가 필요합니다.</p>
+                <p className="text-[10px] md:text-xs text-gray-500">운세를 위해 Gemini API 키가 필요합니다.</p>
                 <div className="flex gap-2">
-                  <input type="password" value={tempKey} onChange={(e) => setTempKey(e.target.value)} placeholder="API 키 입력" className="flex-1 bg-gray-50 rounded-xl px-4 py-2 text-xs" />
-                  <button onClick={handleSaveApiKey} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold">연결</button>
+                  <input type="password" value={tempKey} onChange={(e) => setTempKey(e.target.value)} placeholder="API 키 입력" className="flex-1 bg-gray-50 rounded-xl px-4 py-2 text-[10px] md:text-xs" />
+                  <button onClick={handleSaveApiKey} className="bg-indigo-600 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold">연결</button>
                 </div>
               </div>
             ) : loadingFortune ? (
               <div className="animate-pulse space-y-2"><div className="h-4 bg-gray-100 rounded w-3/4"></div><div className="h-4 bg-gray-100 rounded w-full"></div></div>
             ) : (
               <div className="space-y-3">
-                <div className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
+                <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
                 {profile?.gemini_api_key && (
-                   <div className="pt-2 flex items-center justify-end text-[10px] text-gray-400 font-bold space-x-1">
+                   <div className="pt-2 flex items-center justify-end text-[8px] md:text-[10px] text-gray-400 font-bold space-x-1">
                      <Key size={10} /><span>클라우드 동기화된 키 사용 중</span>
                    </div>
                 )}
@@ -574,9 +573,9 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl p-7 border border-gray-50">
-            <h3 className="text-sm font-black mb-4 flex items-center space-x-2"><CalendarIcon size={16} className="text-indigo-600" /><span>기록 추가</span></h3>
-            <div className="flex gap-2 mb-5 overflow-x-auto pb-2 scrollbar-hide">
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50">
+            <h3 className="text-[12px] md:text-sm font-black mb-4 flex items-center space-x-2"><CalendarIcon size={14} md:size={16} className="text-indigo-600" /><span>기록 추가</span></h3>
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
               {[[MemoType.TODO, ListTodo, '할일'], [MemoType.IDEA, Lightbulb, '아이디어'], [MemoType.APPOINTMENT, CalendarCheck, '약속']].map(([type, Icon, label]: any) => (
                 <button key={type} onClick={() => setSelectedType(type)} className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${selectedType === type ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
                   <Icon size={12} /><span>{label}</span>
@@ -585,21 +584,21 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-4">
               <div className="relative">
-                <input type="text" value={newMemo} onChange={(e) => setNewMemo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()} placeholder="무엇을 기록할까요?" className="w-full bg-gray-50 rounded-2xl py-4 pl-5 pr-14 text-sm font-medium focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all" />
-                <button onClick={handleAddMemo} className="absolute right-2.5 top-2.5 p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Plus size={20} /></button>
+                <input type="text" value={newMemo} onChange={(e) => setNewMemo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()} placeholder="무엇을 기록할까요?" className="w-full bg-gray-50 rounded-2xl py-3 md:py-4 pl-4 pr-12 md:pl-5 md:pr-14 text-[13px] md:text-sm font-medium focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none" />
+                <button onClick={handleAddMemo} className="absolute right-2 top-2 p-1.5 md:p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Plus size={18} md:size={20} /></button>
               </div>
-              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <div className="bg-gray-50 p-3 md:p-4 rounded-2xl border border-gray-100">
                 <div className="flex items-center justify-between">
-                  <button onClick={() => setShowReminderOptions(!showReminderOptions)} className="flex items-center space-x-2 text-xs font-bold text-gray-600">
-                    <Bell size={14} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
-                    <span>알림 설정</span> {showReminderOptions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <button onClick={() => setShowReminderOptions(!showReminderOptions)} className="flex items-center space-x-2 text-[10px] md:text-xs font-bold text-gray-600">
+                    <Bell size={12} md:size={14} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                    <span>알림 설정</span> {showReminderOptions ? <ChevronUp size={12} md:size={14} /> : <ChevronDown size={12} md:size={14} />}
                   </button>
-                  <button onClick={() => setReminderEnabled(!reminderEnabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-3 w-3 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+                  <button onClick={() => setReminderEnabled(!reminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
                 </div>
                 {reminderEnabled && showReminderOptions && (
-                  <div className="mt-4 animate-in slide-in-from-top-1">
-                    <div className="flex items-center gap-3 mb-3"><Clock size={14} className="text-gray-400" /><input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} className="bg-white rounded-lg px-3 py-1 text-xs font-bold border-none" /></div>
-                    <p className="text-[10px] font-bold text-gray-400 mb-2">언제 알려드릴까요? (중복 선택 가능)</p>
+                  <div className="mt-3 animate-in slide-in-from-top-1">
+                    <div className="flex items-center gap-3 mb-2 md:mb-3"><Clock size={12} md:size={14} className="text-gray-400" /><input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} className="bg-white rounded-lg px-2 py-1 text-[10px] md:text-xs font-bold border-none outline-none" /></div>
+                    <p className="text-[9px] md:text-[10px] font-bold text-gray-400 mb-2">알림 시점 선택</p>
                     <ReminderPicker offsets={selectedOffsets} onToggle={(o) => handleToggleOffset(o, false)} />
                   </div>
                 )}
@@ -607,77 +606,78 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl p-7 border border-gray-50 min-h-[300px]">
-            <h3 className="text-lg font-black mb-6">오늘의 기록</h3>
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50 min-h-[250px] md:min-h-[300px]">
+            <h3 className="text-base md:text-lg font-black mb-4 md:mb-6">오늘의 기록</h3>
             <div className="space-y-3">
               {currentDayMemos.length === 0 ? (
-                <div className="text-center py-10 opacity-30"><ListTodo size={40} className="mx-auto mb-2" /><p className="text-sm font-bold">기록이 없습니다.</p></div>
+                <div className="text-center py-8 md:py-10 opacity-30"><ListTodo size={32} md:size={40} className="mx-auto mb-2" /><p className="text-xs md:text-sm font-bold">기록이 없습니다.</p></div>
               ) : currentDayMemos.map((memo) => (
-                <div key={memo.id} className={`group bg-white border p-4 rounded-2xl transition-all ${editingMemoId === memo.id ? 'border-indigo-500 ring-4 ring-indigo-50 shadow-inner' : 'border-gray-50 hover:border-indigo-100'}`}>
+                <div key={memo.id} className={`group bg-white border p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${editingMemoId === memo.id ? 'border-indigo-500 ring-4 ring-indigo-50 shadow-inner' : 'border-gray-50 hover:border-indigo-100'}`}>
                   {editingMemoId === memo.id ? (
                     <div className="space-y-4">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-2xl">
-                          <CalendarDays size={18} className="text-indigo-500 shrink-0" />
+                      <div className="flex flex-col gap-2 md:gap-3">
+                        <div className="flex items-center gap-2 p-2 md:p-3 bg-indigo-50 rounded-xl md:rounded-2xl">
+                          <CalendarDays size={16} md:size={18} className="text-indigo-500 shrink-0" />
                           <input 
                             type="date" 
                             value={editDate} 
                             onChange={(e) => setEditDate(e.target.value)} 
-                            className="flex-1 bg-transparent text-indigo-700 text-sm font-black border-none focus:ring-0 p-0" 
+                            className="flex-1 bg-transparent text-indigo-700 text-xs md:text-sm font-black border-none focus:ring-0 p-0" 
                           />
                         </div>
                         <input 
                           type="text" 
                           value={editContent} 
                           onChange={(e) => setEditContent(e.target.value)} 
-                          className="w-full bg-gray-50 rounded-2xl px-4 py-4 text-sm font-bold focus:bg-white border-none focus:ring-2 focus:ring-indigo-100 transition-all" 
+                          className="w-full bg-gray-50 rounded-xl md:rounded-2xl px-3 py-3 md:px-4 md:py-4 text-xs md:text-sm font-bold focus:bg-white border-none focus:ring-2 focus:ring-indigo-100 transition-all outline-none" 
                           placeholder="수정할 내용을 입력하세요"
                         />
                       </div>
                       
-                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">
+                      <div className="bg-gray-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-gray-100 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                             <Bell size={14} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
-                             <span className="text-xs font-bold text-gray-600">알림 예약</span>
+                             <Bell size={12} md:size={14} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                             <span className="text-[10px] md:text-xs font-bold text-gray-600">알림 예약</span>
                           </div>
-                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-3 w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
                         </div>
                         {editReminderEnabled && (
                           <div className="animate-in slide-in-from-top-1">
-                             <div className="flex items-center gap-3 mb-3"><Clock size={14} className="text-gray-400" /><input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="bg-white rounded-lg px-3 py-1 text-xs font-bold border-none" /></div>
+                             <div className="flex items-center gap-3 mb-2 md:mb-3"><Clock size={12} md:size={14} className="text-gray-400" /><input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="bg-white rounded-lg px-2 py-1 text-[10px] md:text-xs font-bold border-none" /></div>
                              <ReminderPicker offsets={editSelectedOffsets} onToggle={(o) => handleToggleOffset(o, true)} />
                           </div>
                         )}
                       </div>
                       
-                      <div className="flex gap-3 pt-2">
-                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl text-sm font-black shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"><Check size={18} />저장</button>
-                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"><X size={18} />취소</button>
+                      <div className="flex gap-2 md:gap-3 pt-1">
+                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-3 md:py-4 rounded-xl md:rounded-2xl text-[12px] md:text-sm font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"><Check size={16} md:size={18} />저장</button>
+                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-3 md:py-4 rounded-xl md:rounded-2xl text-[12px] md:text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"><X size={16} md:size={18} />취소</button>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <button onClick={() => handleToggleMemo(memo.id, memo.completed)} className="mt-1 shrink-0">{memo.completed ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Circle className="text-gray-200" size={20} />}</button>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <button onClick={() => handleToggleMemo(memo.id, memo.completed)} className="mt-0.5 shrink-0">{memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} md:size={20} /> : <Circle className="text-gray-200" size={18} md:size={20} />}</button>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through font-medium' : 'text-gray-700'}`}>{memo.content}</p>
+                          <p className={`text-[13px] md:text-sm font-bold truncate ${memo.completed ? 'text-gray-300 line-through font-medium' : 'text-gray-700'}`}>{memo.content}</p>
                           <div className="flex flex-wrap gap-1 mt-1.5">
-                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${memo.type === MemoType.IDEA ? 'bg-amber-100 text-amber-700' : memo.type === MemoType.APPOINTMENT ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{memo.type}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-black uppercase tracking-wider ${memo.type === MemoType.IDEA ? 'bg-amber-100 text-amber-700' : memo.type === MemoType.APPOINTMENT ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{memo.type}</span>
                             {memo.reminder_time && (
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black">
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8px] md:text-[9px] font-black">
                                 <Bell size={8} /><span>{memo.reminder_time}</span>
-                                {memo.reminder_offsets?.map(off => (
+                                {memo.reminder_offsets?.slice(0, 1).map(off => (
                                   <span key={off} className="border-l border-indigo-200 pl-1">{OFFSET_LABELS.find(l => l.value === off)?.label.replace(' 전', '')}</span>
                                 ))}
+                                {memo.reminder_offsets && memo.reminder_offsets.length > 1 && <span className="text-[7px]">+ {memo.reminder_offsets.length - 1}</span>}
                               </div>
                             )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleStartEdit(memo)} className="p-2 text-gray-300 hover:text-indigo-500"><Edit2 size={16} /></button>
-                        <button onClick={() => handleDeleteMemo(memo.id)} className="p-2 text-gray-300 hover:text-rose-500"><Trash2 size={16} /></button>
+                      <div className="flex items-center md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleStartEdit(memo)} className="p-1.5 text-gray-300 hover:text-indigo-500"><Edit2 size={14} md:size={16} /></button>
+                        <button onClick={() => handleDeleteMemo(memo.id)} className="p-1.5 text-gray-300 hover:text-rose-500"><Trash2 size={14} md:size={16} /></button>
                       </div>
                     </div>
                   )}

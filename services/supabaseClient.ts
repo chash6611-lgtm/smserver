@@ -5,18 +5,14 @@ import { parseISO, isSameDay, getDay, getDate, getMonth } from 'date-fns';
 import { Lunar } from 'lunar-javascript';
 
 /** 
- * [안내] 서버 저장(Supabase) 설정:
- * 1. supabaseUrl: Supabase 프로젝트의 API URL
- * 2. supabaseAnonKey: 프로젝트의 Anon Public Key
+ * [안내] 서버 저장(Supabase) 설정
  */
 const supabaseUrl = 'https://klarhvoglyapszhdwabp.supabase.co';
-const supabaseAnonKey = 'sb_publishable_uQl3IfjeLOz4_PA-o01rmA_fWh49XPE';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsYXJodm9nbHlhcHN6aGR3YWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0NjE4NTcsImV4cCI6MjA4MjAzNzg1N30.3V2bkP4Xg9kazzlkgdSm_fTGVPCBt4tgqjhfchac7UI';
 
 export const isSupabaseConfigured = 
   supabaseUrl.includes('supabase.co') && 
-  !supabaseUrl.includes('your-project-url') && 
-  supabaseAnonKey.length > 10 &&
-  !supabaseAnonKey.includes('your-anon-key');
+  supabaseAnonKey.length > 20;
 
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
@@ -24,6 +20,12 @@ export const supabase = isSupabaseConfigured
 
 const LOCAL_STORAGE_KEY = 'daily_harmony_memos_v2';
 const PROFILE_STORAGE_KEY = 'user_profile';
+
+const getErrorMessage = (err: any): string => {
+  if (typeof err === 'string') return err;
+  if (err && err.message) return err.message;
+  return "알 수 없는 오류가 발생했습니다.";
+};
 
 // --- 프로필 관련 기능 ---
 
@@ -43,51 +45,63 @@ export const fetchProfileFromCloud = async (userId: string = 'local_user'): Prom
     if (error) throw error;
     
     if (data) {
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(data));
-      return data;
+      // DB의 user_id를 앱의 id로 변환하여 저장
+      const formattedProfile: UserProfile = {
+        ...data,
+        id: data.user_id
+      };
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(formattedProfile));
+      return formattedProfile;
     }
-    return null;
+    
+    const local = localStorage.getItem(PROFILE_STORAGE_KEY);
+    return local ? JSON.parse(local) : null;
   } catch (err) {
-    console.error("프로필 로드 실패:", err);
+    console.warn("프로필 로드 실패:", getErrorMessage(err));
     const local = localStorage.getItem(PROFILE_STORAGE_KEY);
     return local ? JSON.parse(local) : null;
   }
 };
 
 export const saveProfileCloud = async (profile: UserProfile): Promise<UserProfile | null> => {
+  // DB에 없는 'id' 필드를 제거하고 'user_id'로 매핑
+  const { id, ...rest } = profile;
   const profileData = {
-    ...profile,
-    user_id: 'local_user', // 현재는 단일 사용자 모드
+    ...rest,
+    user_id: 'local_user', 
     updated_at: new Date().toISOString(),
   };
 
   if (supabase) {
     try {
-      // upsert: 존재하면 업데이트, 없으면 삽입 (user_id 기준)
       const { data, error } = await supabase
         .from('profiles')
         .upsert(profileData, { onConflict: 'user_id' })
         .select();
       
-      if (!error && data) {
-        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(data[0]));
-        return data[0];
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const saved: UserProfile = { ...data[0], id: data[0].user_id };
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(saved));
+        return saved;
       }
-      if (error) console.error("프로필 저장 에러:", error.message);
-    } catch (e) {
-      console.error("클라우드 프로필 저장 실패:", e);
+    } catch (err) {
+      console.error("클라우드 프로필 저장 실패:", getErrorMessage(err));
+      alert("클라우드 저장에 실패했습니다: " + getErrorMessage(err));
     }
   }
 
-  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profileData));
-  return profileData as UserProfile;
+  // 실패하거나 설정이 없는 경우 로컬에만 저장
+  const localData = { ...profile, updated_at: new Date().toISOString() };
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(localData));
+  return localData as UserProfile;
 };
 
 // --- 메모 관련 기능 ---
 
 export const fetchMemosFromCloud = async (userId: string = 'local_user'): Promise<Memo[]> => {
   if (!supabase) {
-    console.log("로컬 모드로 작동 중입니다.");
     return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   }
 
@@ -103,7 +117,7 @@ export const fetchMemosFromCloud = async (userId: string = 'local_user'): Promis
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
     return data || [];
   } catch (err) {
-    console.error("클라우드 데이터를 불러오는 중 오류 발생:", err);
+    console.warn("메모 로드 실패:", getErrorMessage(err));
     return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
   }
 };
@@ -149,10 +163,10 @@ export const saveMemoCloud = async (memo: Partial<Memo>): Promise<Memo | null> =
   if (supabase) {
     try {
       const { data, error } = await supabase.from('memos').insert([newMemo]).select();
-      if (!error && data) return data[0];
-      if (error) console.error("Supabase Error:", error.message);
-    } catch (e) { 
-      console.error("클라우드 저장 실패", e); 
+      if (error) throw error;
+      if (data) return data[0];
+    } catch (err) { 
+      console.error("클라우드 메모 저장 실패:", getErrorMessage(err)); 
     }
   }
 
@@ -167,9 +181,9 @@ export const deleteMemoCloud = async (id: string): Promise<boolean> => {
   if (supabase && !id.startsWith('local_')) {
     try {
       const { error } = await supabase.from('memos').delete().eq('id', id);
-      if (error) console.error("Supabase Delete Error:", error.message);
-    } catch (e) {
-      console.error("클라우드 삭제 실패", e);
+      if (error) throw error;
+    } catch (err) {
+      console.error("클라우드 삭제 실패:", getErrorMessage(err));
     }
   }
   const localMemos = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
@@ -185,9 +199,9 @@ export const updateMemoCloud = async (id: string, updates: Partial<Memo>): Promi
   if (supabase && !id.startsWith('local_')) {
     try {
       const { error } = await supabase.from('memos').update(processedUpdates).eq('id', id);
-      if (error) console.error("Supabase Update Error:", error.message);
-    } catch (e) {
-      console.error("클라우드 업데이트 실패", e);
+      if (error) throw error;
+    } catch (err) {
+      console.error("클라우드 업데이트 실패:", getErrorMessage(err));
     }
   }
   const localMemos = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
