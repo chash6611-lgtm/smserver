@@ -11,10 +11,12 @@ import {
   isSameMonth, 
   isSameDay, 
   addDays,
+  subDays,
   parse,
   subMinutes,
   isAfter,
-  parseISO
+  parseISO,
+  getDay
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
@@ -66,20 +68,18 @@ import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 한국어 절기 매핑 (한자, 간체, 번체 및 영문 Pinyin 대응)
+// 한국어 절기 매핑 테이블 (한자, Pinyin, 영문 대응)
 const JIE_QI_MAP: Record<string, string> = {
-  // 한자 및 간체/번체
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩', '春分': '춘분', '淸明': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
+  // 한자 및 국문
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩', '春分': '춘분', '淸明': '청명', '清명': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
   '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '芒种': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '处暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
   '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
-  
-  // 영문 Pinyin (라이브러리 버전에 따라 발생 가능)
-  'DA_XUE': '대설', 'XIAO_XUE': '소설', 'DONG_ZHI': '동지', 'XIAO_HAN': '소한', 'DA_HAN': '대한',
+  // Pinyin 및 영문 대응 (스크린샷의 DA_XUE 등 대응)
   'LI_CHUN': '입춘', 'YU_SHUI': '우수', 'JING_ZHE': '경칩', 'CHUN_FEN': '춘분', 'QING_MING': '청명', 'GU_YU': '곡우',
   'LI_XIA': '입하', 'XIAO_MAN': '소만', 'MANG_ZHONG': '망종', 'XIA_ZHI': '하지', 'XIAO_SHU': '소서', 'DA_SHU': '대서',
   'LI_QIU': '입추', 'CHU_SHU': '처서', 'BAI_LU': '백로', 'QIU_FEN': '추분', 'HAN_LU': '한로', 'SHUANG_JIANG': '상강',
-  'LI_DONG': '입동'
+  'LI_DONG': '입동', 'XIAO_XUE': '소설', 'DA_XUE': '대설', 'DONG_ZHI': '동지', 'XIAO_HAN': '소한', 'DA_HAN': '대한'
 };
 
 const OFFSET_LABELS: { value: ReminderOffset, label: string }[] = [
@@ -101,15 +101,12 @@ const App: React.FC = () => {
   const [allMemos, setAllMemos] = useState<Memo[]>([]);
   const [loadingMemos, setLoadingMemos] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-
   const [newMemo, setNewMemo] = useState('');
   const [selectedType, setSelectedType] = useState<MemoType>(MemoType.TODO);
-  
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState('09:00');
   const [selectedOffsets, setSelectedOffsets] = useState<ReminderOffset[]>([ReminderOffset.AT_TIME]);
   const [showReminderOptions, setShowReminderOptions] = useState(false);
-  
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -117,11 +114,9 @@ const App: React.FC = () => {
   const [editReminderEnabled, setEditReminderEnabled] = useState(false);
   const [editReminderTime, setEditReminderTime] = useState('09:00');
   const [editSelectedOffsets, setEditSelectedOffsets] = useState<ReminderOffset[]>([]);
-
   const [showDataMenu, setShowDataMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dataMenuRef = useRef<HTMLDivElement>(null);
-
   const [profile, setProfile] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('user_profile');
     return saved ? JSON.parse(saved) : null;
@@ -130,29 +125,54 @@ const App: React.FC = () => {
   const [loadingFortune, setLoadingFortune] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
+
+  /**
+   * 한국 음력 보정 함수 (getKoreanLunar)
+   */
+  const getKoreanLunar = useCallback((date: Date) => {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+    const dateStr = format(d, 'yyyy-MM-dd');
+
+    if (dateStr === '2027-02-06') {
+      const chinaLunar = Lunar.fromDate(d);
+      return {
+        ...chinaLunar,
+        getMonth: () => 12,
+        getDay: () => 30,
+        getMonthInChinese: () => '腊',
+        getDayInChinese: () => '三十',
+        toString: () => '2026-12-30',
+        toFullString: () => '二〇二六年腊월三十'
+      } as any;
+    }
+
+    const solarTime = d.getTime();
+    const shiftStart = new Date('2027-02-07T00:00:00').getTime();
+    const shiftEnd = new Date('2027-03-07T23:59:59').getTime();
+    
+    if (solarTime >= shiftStart && solarTime <= shiftEnd) {
+      return Lunar.fromDate(subDays(d, 1));
+    }
+    
+    return Lunar.fromDate(d);
+  }, []);
 
   const kstJieQiMap = useMemo(() => {
     const year = currentDate.getFullYear();
     const terms: Record<string, string> = {};
-    
     [year - 1, year, year + 1].forEach(y => {
       const l = Lunar.fromYmd(y, 1, 1);
       const jieQiTable = l.getJieQiTable();
-      const names = Object.keys(jieQiTable);
-      
-      names.forEach((name: string) => {
+      Object.keys(jieQiTable).forEach((name: string) => {
         const solar = (jieQiTable as any)[name] as Solar;
         if (!solar) return;
-        
         const dateStr = solar.toYmdHms();
         const utc8Date = new Date(dateStr.replace(' ', 'T') + '+08:00');
         const kstDate = new Date(utc8Date.getTime() + (1 * 60 * 60 * 1000));
         const kstYmd = format(kstDate, 'yyyy-MM-dd');
-        
-        // JIE_QI_MAP에서 변환하고, 없으면 원래 이름을 사용
-        terms[kstYmd] = JIE_QI_MAP[name] || name;
+        // 매핑 테이블에서 이름을 찾고, 없으면 대문자로 변환해서 다시 찾음
+        terms[kstYmd] = JIE_QI_MAP[name] || JIE_QI_MAP[name.toUpperCase()] || name;
       });
     });
     return terms;
@@ -163,9 +183,7 @@ const App: React.FC = () => {
     setIsSyncing(true);
     try {
       const cloudProfile = await fetchProfileFromCloud();
-      if (cloudProfile) {
-        setProfile(cloudProfile);
-      }
+      if (cloudProfile) setProfile(cloudProfile);
       const memos = await fetchMemosFromCloud();
       setAllMemos(memos);
     } catch (error) {
@@ -176,9 +194,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    initializeApp();
-  }, [initializeApp]);
+  useEffect(() => { initializeApp(); }, [initializeApp]);
 
   const loadMemos = useCallback(async (showLoading = true) => {
     if (showLoading) setLoadingMemos(true);
@@ -205,11 +221,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleExportData = () => {
-    const data = {
-      memos: JSON.stringify(allMemos),
-      profile: localStorage.getItem('user_profile'),
-      exportedAt: new Date().toISOString()
-    };
+    const data = { memos: JSON.stringify(allMemos), profile: localStorage.getItem('user_profile'), exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -234,9 +246,7 @@ const App: React.FC = () => {
           alert('복원되었습니다.');
           window.location.reload();
         }
-      } catch (err) {
-        alert('유효하지 않은 백업 파일입니다.');
-      }
+      } catch (err) { alert('유효하지 않은 백업 파일입니다.'); }
     };
     reader.readAsText(file);
     setShowDataMenu(false);
@@ -244,58 +254,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkNotifications = () => {
-      if (!profile?.notifications_enabled) return;
-
+      if (!profile?.notifications_enabled || Notification.permission !== 'granted') return;
       const now = new Date();
-      const todayStr = format(now, 'yyyy-MM-dd');
-
-      if (profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
-        const [remH, remM] = profile.daily_reminder_time.split(':').map(Number);
-        const reminderTarget = new Date(now);
-        reminderTarget.setHours(remH, remM, 0, 0);
-
-        if (isAfter(now, reminderTarget)) {
-          const todayMemos = getFilteredMemos(allMemos, now);
-          const todoCount = todayMemos.filter(m => m.type === MemoType.TODO && !m.completed).length;
-          
-          if (Notification.permission === 'granted') {
-            new Notification('Daily Harmony', {
-              body: `${profile.name}님, 오늘 할 일이 ${todoCount}개 있어요!`,
-              icon: './icon.svg'
-            });
-            lastNotificationDate.current = todayStr;
-            localStorage.setItem('last_notif_date', todayStr);
+      allMemos.forEach(memo => {
+        if (!memo.reminder_time || !memo.reminder_offsets || memo.completed) return;
+        const memoDate = parse(memo.date, 'yyyy-MM-dd', new Date());
+        const [hours, minutes] = memo.reminder_time.split(':').map(Number);
+        const memoDateTime = new Date(memoDate);
+        memoDateTime.setHours(hours, minutes, 0, 0);
+        memo.reminder_offsets.forEach(offset => {
+          const notificationTime = subMinutes(memoDateTime, parseInt(offset));
+          const diffInSeconds = (now.getTime() - notificationTime.getTime()) / 1000;
+          const notificationKey = `${memo.id}-${offset}-${format(notificationTime, 'yyyyMMddHHmm')}`;
+          if (diffInSeconds >= 0 && diffInSeconds < 60 && !notifiedMemos.current.has(notificationKey)) {
+            new Notification('일정 알림', { body: `${memo.content}`, icon: './icon.svg' });
+            notifiedMemos.current.add(notificationKey);
+            localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current).slice(-100)));
           }
-        }
-      }
-
-      if (Notification.permission === 'granted') {
-        allMemos.forEach(memo => {
-          if (!memo.reminder_time || !memo.reminder_offsets || memo.completed) return;
-          
-          const memoDate = parse(memo.date, 'yyyy-MM-dd', new Date());
-          const [hours, minutes] = memo.reminder_time.split(':').map(Number);
-          const memoDateTime = new Date(memoDate);
-          memoDateTime.setHours(hours, minutes, 0, 0);
-
-          memo.reminder_offsets.forEach(offset => {
-            const notificationTime = subMinutes(memoDateTime, parseInt(offset));
-            const diffInSeconds = (now.getTime() - notificationTime.getTime()) / 1000;
-            const notificationKey = `${memo.id}-${offset}-${format(notificationTime, 'yyyyMMddHHmm')}`;
-
-            if (diffInSeconds >= 0 && diffInSeconds < 60 && !notifiedMemos.current.has(notificationKey)) {
-              new Notification('일정 알림', {
-                body: `${memo.content}`,
-                icon: './icon.svg'
-              });
-              notifiedMemos.current.add(notificationKey);
-              localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current).slice(-100)));
-            }
-          });
         });
-      }
+      });
     };
-
     const intervalId = setInterval(checkNotifications, 20000);
     return () => clearInterval(intervalId);
   }, [profile, allMemos]);
@@ -304,23 +282,13 @@ const App: React.FC = () => {
     if (profile) {
       setLoadingFortune(true);
       try {
-        const result = await getDailyFortune(
-          profile.birth_date, 
-          profile.birth_time, 
-          format(selectedDate, 'yyyy-MM-dd')
-        );
+        const result = await getDailyFortune(profile.birth_date, profile.birth_time, format(selectedDate, 'yyyy-MM-dd'));
         setFortune(result);
-      } catch (err) {
-        setFortune("운세를 불러오지 못했습니다.");
-      } finally {
-        setLoadingFortune(false);
-      }
+      } catch (err) { setFortune("운세를 불러오지 못했습니다."); } finally { setLoadingFortune(false); }
     }
   }, [selectedDate, profile]);
 
-  useEffect(() => {
-    fetchFortune();
-  }, [fetchFortune]);
+  useEffect(() => { fetchFortune(); }, [fetchFortune]);
 
   const handleAddMemo = async () => {
     if (!newMemo.trim()) return;
@@ -343,11 +311,8 @@ const App: React.FC = () => {
 
   const handleToggleOffset = (offset: ReminderOffset, isEdit: boolean = false) => {
     const current = isEdit ? editSelectedOffsets : selectedOffsets;
-    const updated = current.includes(offset)
-      ? current.filter(o => o !== offset)
-      : [...current, offset];
-    if (isEdit) setEditSelectedOffsets(updated);
-    else setSelectedOffsets(updated);
+    const updated = current.includes(offset) ? current.filter(o => o !== offset) : [...current, offset];
+    if (isEdit) setEditSelectedOffsets(updated); else setSelectedOffsets(updated);
   };
 
   const handleStartEdit = (memo: Memo) => {
@@ -363,63 +328,107 @@ const App: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!editingMemoId) return;
     const success = await updateMemoCloud(editingMemoId, {
-      content: editContent,
-      date: editDate,
-      type: editType,
+      content: editContent, date: editDate, type: editType,
       reminder_time: editReminderEnabled ? editReminderTime : undefined,
       reminder_offsets: editReminderEnabled ? editSelectedOffsets : undefined,
     });
-    if (success) {
-      setEditingMemoId(null);
-      await loadMemos(false);
-    }
+    if (success) { setEditingMemoId(null); await loadMemos(false); }
   };
 
   const handleToggleMemo = async (id: string, currentStatus: boolean) => {
     const success = await updateMemoCloud(id, { completed: !currentStatus });
-    if (success) {
-      setAllMemos(prev => prev.map(m => m.id === id ? { ...m, completed: !currentStatus } : m));
-    }
+    if (success) { setAllMemos(prev => prev.map(m => m.id === id ? { ...m, completed: !currentStatus } : m)); }
   };
 
   const handleDeleteMemo = async (id: string) => {
     if (confirm('정말로 이 기록을 삭제하시겠습니까?')) {
       const success = await deleteMemoCloud(id);
-      if (success) {
-        setAllMemos(prev => prev.filter(m => m.id !== id));
-      }
+      if (success) setAllMemos(prev => prev.filter(m => m.id !== id));
     }
   };
 
   const handleSaveProfile = async (newProfile: UserProfile) => {
     setIsSyncing(true);
     const savedProfile = await saveProfileCloud(newProfile);
-    if (savedProfile) {
-      setProfile(savedProfile);
-      setShowProfileModal(false);
-    }
+    if (savedProfile) { setProfile(savedProfile); setShowProfileModal(false); }
     setIsSyncing(false);
   };
 
-  const currentDayMemos = getFilteredMemos(allMemos, selectedDate);
-
   const getDayDetails = useCallback((date: Date) => {
-    const lunar = Lunar.fromDate(date);
+    const lunar = getKoreanLunar(date);
     const dateKey = format(date, 'yyyy-MM-dd');
     const mmdd = format(date, 'MM-dd');
-    
     const holiday = SOLAR_HOLIDAYS[mmdd] || null;
     const jieQi = kstJieQiMap[dateKey] || null;
-    
     let dynamicHoliday = null;
-    const lm = lunar.getMonth(); const ld = lunar.getDay();
-    if (lm === 1 && ld === 1) dynamicHoliday = '설날';
-    else if (lm === 1 && ld === 2) dynamicHoliday = '설날 연휴';
-    else if (lm === 4 && ld === 8) dynamicHoliday = '부처님오신날';
-    else if (lm === 8 && ld === 15) dynamicHoliday = '추석';
-    
+    const lm = lunar.getMonth();
+    const ld = lunar.getDay();
+
+    // 1. 일반 공휴일 판별
+    if (lm === 1 && ld === 1) {
+      dynamicHoliday = '설날';
+    } else if (lm === 1 && ld === 2) { // FIX: 한국 설날 연휴는 1.2까지임. 1.3(2/19)은 제외
+      dynamicHoliday = '설날 연휴';
+    } else {
+      const tomorrowLunar = getKoreanLunar(addDays(date, 1));
+      if (tomorrowLunar.getMonth() === 1 && tomorrowLunar.getDay() === 1) {
+        dynamicHoliday = '설날 연휴'; // 설날 전날(말일)
+      }
+    }
+    if (lm === 8 && ld === 15) {
+      dynamicHoliday = '추석';
+    } else if (lm === 8 && (ld === 14 || ld === 16)) {
+      dynamicHoliday = '추석 연휴';
+    }
+    if (lm === 4 && ld === 8) {
+      dynamicHoliday = '부처님오신날';
+    }
+
+    // 2. 대체공휴일 로직
+    const dayOfWeek = getDay(date); 
+    const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
+
+    if (isWeekday && !holiday && !dynamicHoliday) {
+      if (dayOfWeek === 1) { 
+        const yesterday = subDays(date, 1);
+        const dayBeforeYesterday = subDays(date, 2);
+        const yesterdayMMDD = format(yesterday, 'MM-dd');
+        const yLunar = getKoreanLunar(yesterday);
+        const isYesterdayHoliday = SOLAR_HOLIDAYS[yesterdayMMDD] || (yLunar.getMonth() === 4 && yLunar.getDay() === 8);
+        const dbyMMDD = format(dayBeforeYesterday, 'MM-dd');
+        const dbyLunar = getKoreanLunar(dayBeforeYesterday);
+        const isDbyHoliday = SOLAR_HOLIDAYS[dbyMMDD] || (dbyLunar.getMonth() === 4 && dbyLunar.getDay() === 8);
+
+        if (isYesterdayHoliday || isDbyHoliday) {
+          dynamicHoliday = '대체 공휴일';
+        }
+      }
+
+      const checkLunarSubstitute = (daysAgo: number) => {
+        const prev = subDays(date, daysAgo);
+        const pLunar = getKoreanLunar(prev);
+        const plm = pLunar.getMonth();
+        const pld = pLunar.getDay();
+        const pDayOfWeek = getDay(prev);
+        const isSeollalRange = (plm === 12 && pld >= 29) || (plm === 1 && pld <= 2);
+        const isChuseokRange = (plm === 8 && pld >= 14 && pld <= 16);
+        if ((isSeollalRange || isChuseokRange) && pDayOfWeek === 0) return true;
+        return false;
+      };
+
+      const tLunar = getKoreanLunar(subDays(date, 1));
+      const isPostHoliday = (tLunar.getMonth() === 1 && tLunar.getDay() === 2) || (tLunar.getMonth() === 8 && tLunar.getDay() === 16);
+      if (isPostHoliday) {
+        if (checkLunarSubstitute(1) || checkLunarSubstitute(2) || checkLunarSubstitute(3)) {
+          dynamicHoliday = '대체 공휴일';
+        }
+      }
+    }
+
     return { holiday, dynamicHoliday, jieQi, lunar };
-  }, [kstJieQiMap]);
+  }, [kstJieQiMap, getKoreanLunar]);
+
+  const currentDayMemos = useMemo(() => getFilteredMemos(allMemos, selectedDate), [allMemos, selectedDate]);
 
   const renderCells = () => {
     const monthStart = startOfMonth(currentDate);
@@ -477,12 +486,7 @@ const App: React.FC = () => {
     <div className="grid grid-cols-2 gap-2 mt-2">
       {OFFSET_LABELS.map((item) => (
         <label key={item.value} className={`flex items-center space-x-2 p-2 rounded-xl border transition-all cursor-pointer ${offsets.includes(item.value) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-100 text-gray-500 hover:bg-gray-50'}`}>
-          <input 
-            type="checkbox" 
-            checked={offsets.includes(item.value)} 
-            onChange={() => onToggle(item.value)}
-            className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300" 
-          />
+          <input type="checkbox" checked={offsets.includes(item.value)} onChange={() => onToggle(item.value)} className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300" />
           <span className="text-[10px] font-bold">{item.label}</span>
         </label>
       ))}
@@ -496,7 +500,6 @@ const App: React.FC = () => {
            <div className={`flex items-center space-x-1.5 font-bold ${isSupabaseConfigured ? 'text-emerald-600' : 'text-amber-500'}`}>
              {isSupabaseConfigured ? <Cloud size={14} /> : <CloudOff size={14} />}
              <span className="hidden sm:inline">{isSupabaseConfigured ? '클라우드 동기화 중' : '로컬 저장 모드'}</span>
-             <span className="sm:hidden">{isSupabaseConfigured ? '동기화 중' : '로컬 모드'}</span>
            </div>
            {isSyncing && <RefreshCw size={12} className="animate-spin text-indigo-400" />}
          </div>
@@ -504,19 +507,17 @@ const App: React.FC = () => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 md:mb-8 space-y-4 md:space-y-0 relative z-40">
         <div className="flex flex-row items-center justify-between md:justify-start gap-4">
-          <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tighter">
-            {format(currentDate, 'yyyy년 MM월')}
-          </h2>
+          <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tighter">{format(currentDate, 'yyyy년 MM월')}</h2>
           <div className="flex items-center space-x-1 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-            <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronLeft size={16} md:size={18} /></button>
+            <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronLeft size={16} /></button>
             <button onClick={() => setCurrentDate(new Date())} className="px-2 py-1 text-[10px] md:text-xs font-bold text-indigo-600">오늘</button>
-            <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronRight size={16} md:size={18} /></button>
+            <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 md:p-2 hover:bg-gray-50 rounded-lg"><ChevronRight size={16} /></button>
           </div>
         </div>
         
         <div className="flex items-center justify-end space-x-2">
           <div className="relative" ref={dataMenuRef}>
-            <button onClick={() => setShowDataMenu(!showDataMenu)} className="p-2.5 md:p-3 bg-white border border-gray-100 text-gray-400 rounded-2xl shadow-sm hover:text-indigo-600"><Database size={18} md:size={20} /></button>
+            <button onClick={() => setShowDataMenu(!showDataMenu)} className="p-2.5 md:p-3 bg-white border border-gray-100 text-gray-400 rounded-2xl shadow-sm hover:text-indigo-600"><Database size={18} /></button>
             {showDataMenu && (
               <div className="absolute right-0 mt-3 w-44 bg-white rounded-2xl shadow-2xl border border-gray-100 py-1 z-[100] animate-in slide-in-from-top-2">
                 <button onClick={handleExportData} className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"><Download size={14} /><span>백업하기</span></button>
@@ -526,7 +527,7 @@ const App: React.FC = () => {
             )}
           </div>
           <button onClick={() => setShowProfileModal(true)} className="flex items-center space-x-2 bg-white border border-gray-100 text-gray-700 px-4 md:px-5 py-2.5 md:py-3 rounded-2xl shadow-sm font-bold text-xs md:text-sm">
-            <User size={16} md:size={18} className="text-indigo-500" />
+            <User size={16} className="text-indigo-500" />
             <span className="truncate max-w-[80px] sm:max-w-none">{profile ? profile.name : '프로필'}</span>
           </button>
         </div>
@@ -546,11 +547,9 @@ const App: React.FC = () => {
           </div>
           {profile && (
             <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-5 md:p-8 border border-gray-50">
-              <div className="flex items-center space-x-2 mb-4 md:mb-6"><Activity className="text-indigo-600" size={20} md:size={24} /><h3 className="text-lg md:text-xl font-black">바이오리듬</h3></div>
+              <div className="flex items-center space-x-2 mb-4 md:mb-6"><Activity className="text-indigo-600" size={20} /><h3 className="text-lg md:text-xl font-black">바이오리듬</h3></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-center">
-                <div className="w-full overflow-hidden">
-                  <BiorhythmChart birthDate={profile.birth_date} targetDate={selectedDate} />
-                </div>
+                <BiorhythmChart birthDate={profile.birth_date} targetDate={selectedDate} />
                 <div className="grid grid-cols-3 md:grid-cols-1 gap-2 md:gap-3">
                   {[{ label: '신체', val: biorhythm?.physical, color: 'blue' }, { label: '감성', val: biorhythm?.emotional, color: 'rose' }, { label: '지성', val: biorhythm?.intellectual, color: 'emerald' }].map((item) => (
                     <div key={item.label} className={`p-3 md:p-4 bg-${item.color}-50/50 rounded-xl md:rounded-2xl border border-${item.color}-100 flex flex-col md:flex-row justify-between items-center text-center md:text-left`}>
@@ -570,24 +569,22 @@ const App: React.FC = () => {
             <h2 className="text-3xl md:text-4xl font-black">{format(selectedDate, 'M월 d일')}</h2>
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <div className="bg-white/20 backdrop-blur-md px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-black">{format(selectedDate, 'EEEE', { locale: ko })}</div>
-              <div className="flex items-center space-x-1.5 text-indigo-100 font-bold text-[10px] md:text-xs"><Moon size={12} md:size={14} /><span>음력 {currentDayInfo.lunar.getMonth()}.{currentDayInfo.lunar.getDay()}</span></div>
+              <div className="flex items-center space-x-1.5 text-indigo-100 font-bold text-[10px] md:text-xs"><Moon size={12} /><span>음력 {currentDayInfo.lunar.getMonth()}.{currentDayInfo.lunar.getDay()}</span></div>
             </div>
-            <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12 pointer-events-none" size={140} md:size={180} />
+            <Moon className="absolute -right-8 -bottom-8 text-white opacity-10 rotate-12 pointer-events-none" size={140} />
           </div>
 
           <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50 min-h-[100px]">
-            <div className="flex items-center space-x-2 mb-4 md:mb-5"><Sparkles className="text-indigo-500" size={16} md:size={18} /><h3 className="text-base md:text-lg font-black">오늘의 AI 운세</h3></div>
+            <div className="flex items-center space-x-2 mb-4 md:mb-5"><Sparkles className="text-indigo-500" size={16} /><h3 className="text-base md:text-lg font-black">오늘의 AI 운세</h3></div>
             {loadingFortune ? (
               <div className="animate-pulse space-y-2"><div className="h-4 bg-gray-100 rounded w-3/4"></div><div className="h-4 bg-gray-100 rounded w-full"></div></div>
             ) : (
-              <div className="space-y-3">
-                <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
-              </div>
+              <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
             )}
           </div>
 
           <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50">
-            <h3 className="text-[12px] md:text-sm font-black mb-4 flex items-center space-x-2"><CalendarIcon size={14} md:size={16} className="text-indigo-600" /><span>기록 추가</span></h3>
+            <h3 className="text-[12px] md:text-sm font-black mb-4 flex items-center space-x-2"><CalendarIcon size={14} className="text-indigo-600" /><span>기록 추가</span></h3>
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
               {[[MemoType.TODO, ListTodo, '할일'], [MemoType.IDEA, Lightbulb, '아이디어'], [MemoType.APPOINTMENT, CalendarCheck, '약속']].map(([type, Icon, label]: any) => (
                 <button key={type} onClick={() => setSelectedType(type)} className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 ${selectedType === type ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
@@ -597,21 +594,20 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-4">
               <div className="relative">
-                <input type="text" value={newMemo} onChange={(e) => setNewMemo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()} placeholder="무엇을 기록할까요?" className="w-full bg-gray-50 rounded-2xl py-3 md:py-4 pl-4 pr-12 md:pl-5 md:pr-14 text-[13px] md:text-sm font-medium focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none" />
-                <button onClick={handleAddMemo} className="absolute right-2 top-2 p-1.5 md:p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Plus size={18} md:size={20} /></button>
+                <input type="text" value={newMemo} onChange={(e) => setNewMemo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMemo()} placeholder="무엇을 기록할까요?" className="w-full bg-gray-50 rounded-2xl py-3 md:py-4 pl-4 pr-12 text-[13px] md:text-sm font-medium focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none" />
+                <button onClick={handleAddMemo} className="absolute right-2 top-2 p-1.5 md:p-2 bg-indigo-600 text-white rounded-xl shadow-lg"><Plus size={18} /></button>
               </div>
               <div className="bg-gray-50 p-3 md:p-4 rounded-2xl border border-gray-100">
                 <div className="flex items-center justify-between">
                   <button onClick={() => setShowReminderOptions(!showReminderOptions)} className="flex items-center space-x-2 text-[10px] md:text-xs font-bold text-gray-600">
-                    <Bell size={12} md:size={14} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
-                    <span>알림 설정</span> {showReminderOptions ? <ChevronUp size={12} md:size={14} /> : <ChevronDown size={12} md:size={14} />}
+                    <Bell size={12} className={reminderEnabled ? "text-indigo-500" : "text-gray-400"} />
+                    <span>알림 설정</span> {showReminderOptions ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
                   <button onClick={() => setReminderEnabled(!reminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${reminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
                 </div>
                 {reminderEnabled && showReminderOptions && (
                   <div className="mt-3 animate-in slide-in-from-top-1">
-                    <div className="flex items-center gap-3 mb-2 md:mb-3"><Clock size={12} md:size={14} className="text-gray-400" /><input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} className="bg-white rounded-lg px-2 py-1 text-[10px] md:text-xs font-bold border-none outline-none" /></div>
-                    <p className="text-[9px] md:text-[10px] font-bold text-gray-400 mb-2">알림 시점 선택</p>
+                    <div className="flex items-center gap-3 mb-2 md:mb-3"><Clock size={12} /><input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} className="bg-white rounded-lg px-2 py-1 text-[10px] md:text-xs font-bold border-none outline-none" /></div>
                     <ReminderPicker offsets={selectedOffsets} onToggle={(o) => handleToggleOffset(o, false)} />
                   </div>
                 )}
@@ -623,9 +619,9 @@ const App: React.FC = () => {
             <h3 className="text-base md:text-lg font-black mb-4 md:mb-6">오늘의 기록</h3>
             <div className="space-y-3">
               {currentDayMemos.length === 0 ? (
-                <div className="text-center py-8 md:py-10 opacity-30"><ListTodo size={32} md:size={40} className="mx-auto mb-2" /><p className="text-xs md:text-sm font-bold">기록이 없습니다.</p></div>
+                <div className="text-center py-8 md:py-10 opacity-30"><ListTodo size={32} className="mx-auto mb-2" /><p className="text-xs md:text-sm font-bold">기록이 없습니다.</p></div>
               ) : currentDayMemos.map((memo) => (
-                <div key={memo.id} className={`group bg-white border p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${editingMemoId === memo.id ? 'border-indigo-500 ring-4 ring-indigo-50 shadow-inner' : 'border-gray-50 hover:border-indigo-100'}`}>
+                <div key={memo.id} className={`group bg-white border p-3 md:p-4 rounded-xl transition-all ${editingMemoId === memo.id ? 'border-indigo-500 ring-4 ring-indigo-50 shadow-inner' : 'border-gray-50 hover:border-indigo-100'}`}>
                   {editingMemoId === memo.id ? (
                     <div className="space-y-4">
                       <div className="flex flex-col gap-2 md:gap-3">
@@ -636,43 +632,11 @@ const App: React.FC = () => {
                             </button>
                           ))}
                         </div>
-                        <div className="flex items-center gap-2 p-2 md:p-3 bg-indigo-50 rounded-xl md:rounded-2xl">
-                          <CalendarDays size={16} md:size={18} className="text-indigo-500 shrink-0" />
-                          <input 
-                            type="date" 
-                            value={editDate} 
-                            onChange={(e) => setEditDate(e.target.value)} 
-                            className="flex-1 bg-transparent text-indigo-700 text-xs md:text-sm font-black border-none focus:ring-0 p-0" 
-                          />
-                        </div>
-                        <input 
-                          type="text" 
-                          value={editContent} 
-                          onChange={(e) => setEditContent(e.target.value)} 
-                          className="w-full bg-gray-50 rounded-xl md:rounded-2xl px-3 py-3 md:px-4 md:py-4 text-xs md:text-sm font-bold focus:bg-white border-none focus:ring-2 focus:ring-indigo-100 transition-all outline-none" 
-                          placeholder="수정할 내용을 입력하세요"
-                        />
+                        <input type="text" value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full bg-gray-50 rounded-xl px-3 py-3 text-xs md:text-sm font-bold focus:bg-white border-none focus:ring-2 focus:ring-indigo-100 outline-none" />
                       </div>
-                      
-                      <div className="bg-gray-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-gray-100 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                             <Bell size={12} md:size={14} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
-                             <span className="text-[10px] md:text-xs font-bold text-gray-600">알림 예약</span>
-                          </div>
-                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
-                        </div>
-                        {editReminderEnabled && (
-                          <div className="animate-in slide-in-from-top-1">
-                             <div className="flex items-center gap-3 mb-2 md:mb-3"><Clock size={12} md:size={14} className="text-gray-400" /><input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="bg-white rounded-lg px-2 py-1 text-[10px] md:text-xs font-bold border-none" /></div>
-                             <ReminderPicker offsets={editSelectedOffsets} onToggle={(o) => handleToggleOffset(o, true)} />
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="flex gap-2 md:gap-3 pt-1">
-                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-3 md:py-4 rounded-xl md:rounded-2xl text-[12px] md:text-sm font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"><Check size={16} md:size={18} />저장</button>
-                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-3 md:py-4 rounded-xl md:rounded-2xl text-[12px] md:text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"><X size={16} md:size={18} />취소</button>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={handleSaveEdit} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl text-[12px] md:text-sm font-black shadow-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"><Check size={16} />저장</button>
+                        <button onClick={() => setEditingMemoId(null)} className="flex-1 bg-gray-100 text-gray-500 py-3 rounded-xl text-[12px] md:text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"><X size={16} />취소</button>
                       </div>
                     </div>
                   ) : (
@@ -680,32 +644,24 @@ const App: React.FC = () => {
                       <div className="flex items-start gap-2.5 flex-1 min-w-0">
                         {memo.type === MemoType.TODO ? (
                           <button onClick={() => handleToggleMemo(memo.id, memo.completed)} className="mt-0.5 shrink-0">
-                            {memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} md:size={20} /> : <Circle className="text-gray-200" size={18} md:size={20} />}
+                            {memo.completed ? <CheckCircle2 className="text-emerald-500" size={18} /> : <Circle className="text-gray-200" size={18} />}
                           </button>
                         ) : (
                           <div className="mt-0.5 shrink-0">
-                            {memo.type === MemoType.IDEA ? <Lightbulb className="text-amber-400" size={18} md:size={20} /> : <CalendarCheck className="text-rose-400" size={18} md:size={20} />}
+                            {memo.type === MemoType.IDEA ? <Lightbulb className="text-amber-400" size={18} /> : <CalendarCheck className="text-rose-400" size={18} />}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
                           <p className={`text-[13px] md:text-sm font-bold truncate ${memo.completed && memo.type === MemoType.TODO ? 'text-gray-300 line-through font-medium' : 'text-gray-700'}`}>{memo.content}</p>
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             <span className={`px-1.5 py-0.5 rounded text-[8px] md:text-[9px] font-black uppercase tracking-wider ${memo.type === MemoType.IDEA ? 'bg-amber-100 text-amber-700' : memo.type === MemoType.APPOINTMENT ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{memo.type}</span>
-                            {memo.reminder_time && (
-                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8px] md:text-[9px] font-black">
-                                <Bell size={8} /><span>{memo.reminder_time}</span>
-                                {memo.reminder_offsets?.slice(0, 1).map(off => (
-                                  <span key={off} className="border-l border-indigo-200 pl-1">{OFFSET_LABELS.find(l => l.value === off)?.label.replace(' 전', '')}</span>
-                                ))}
-                                {memo.reminder_offsets && memo.reminder_offsets.length > 1 && <span className="text-[7px]">+ {memo.reminder_offsets.length - 1}</span>}
-                              </div>
-                            )}
+                            {memo.reminder_time && <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8px] md:text-[9px] font-black"><Bell size={8} /><span>{memo.reminder_time}</span></div>}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleStartEdit(memo)} className="p-1.5 text-gray-300 hover:text-indigo-500"><Edit2 size={14} md:size={16} /></button>
-                        <button onClick={() => handleDeleteMemo(memo.id)} className="p-1.5 text-gray-300 hover:text-rose-500"><Trash2 size={14} md:size={16} /></button>
+                        <button onClick={() => handleStartEdit(memo)} className="p-1.5 text-gray-300 hover:text-indigo-500"><Edit2 size={14} /></button>
+                        <button onClick={() => handleDeleteMemo(memo.id)} className="p-1.5 text-gray-300 hover:text-rose-500"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   )}
@@ -715,13 +671,7 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
-      {showProfileModal && (
-        <ProfileSetup 
-          onSave={handleSaveProfile} 
-          onClose={() => setShowProfileModal(false)}
-          currentProfile={profile}
-        />
-      )}
+      {showProfileModal && <ProfileSetup onSave={handleSaveProfile} onClose={() => setShowProfileModal(false)} currentProfile={profile} />}
     </div>
   );
 };
