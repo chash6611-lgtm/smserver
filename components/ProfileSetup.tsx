@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { UserProfile } from '../types.ts';
-import { X, Calendar, User as UserIcon, Clock, Bell, Key, Cloud } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Clock, Bell, Send } from 'lucide-react';
 
 interface Props {
   onSave: (profile: UserProfile) => void;
@@ -15,7 +15,6 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
   const [birthTime, setBirthTime] = useState(currentProfile?.birth_time || '');
   const [notifEnabled, setNotifEnabled] = useState(currentProfile?.notifications_enabled ?? false);
   const [notifTime, setNotifTime] = useState(currentProfile?.daily_reminder_time || '09:00');
-  const [geminiApiKey, setGeminiApiKey] = useState(currentProfile?.gemini_api_key || '');
 
   const handleToggleNotif = async () => {
     if (!notifEnabled) {
@@ -35,6 +34,22 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
     }
   };
 
+  const handleTestNotification = () => {
+    if (!("Notification" in window)) {
+      alert("이 브라우저는 알림을 지원하지 않습니다.");
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      new Notification('알림 테스트 성공! 🎉', {
+        body: '데일리 하모니 알림이 정상적으로 작동하고 있습니다.',
+        icon: './icon.svg'
+      });
+    } else {
+      handleToggleNotif();
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !birthDate) return;
@@ -44,8 +59,7 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
       birth_date: birthDate,
       birth_time: birthTime,
       notifications_enabled: notifEnabled,
-      daily_reminder_time: notifTime,
-      gemini_api_key: geminiApiKey
+      daily_reminder_time: notifTime
     });
   };
 
@@ -112,28 +126,6 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
                   </div>
                 </div>
               </div>
-
-              <div className="pt-1">
-                <label className="flex items-center justify-between text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 md:mb-2 ml-1">
-                  <span>Google AI Studio API 키</span>
-                  <div className="flex items-center space-x-1 text-[8px] md:text-[9px] text-emerald-500 normal-case">
-                    <Cloud size={10} /><span>클라우드 동기화</span>
-                  </div>
-                </label>
-                <div className="relative">
-                  <input 
-                    type="password" 
-                    value={geminiApiKey}
-                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                    className="w-full bg-gray-50 border-none focus:ring-2 focus:ring-emerald-500 rounded-2xl py-2.5 md:py-3 pl-10 md:pl-11 text-gray-800 text-xs md:text-sm transition-all outline-none"
-                    placeholder="AI 운세를 위한 API 키"
-                  />
-                  <Key className="absolute left-3.5 top-3 md:left-4 md:top-3.5 text-gray-300" size={16} md:size={18} />
-                </div>
-                <p className="mt-2 text-[9px] md:text-[10px] text-gray-400 font-medium px-1">
-                  * API 키는 클라우드에 안전하게 보관되며 모든 기기에서 공유됩니다.
-                </p>
-              </div>
             </div>
 
             <div className="p-4 md:p-5 bg-indigo-50/50 rounded-[20px] md:rounded-3xl border border-indigo-100">
@@ -152,16 +144,26 @@ const ProfileSetup: React.FC<Props> = ({ onSave, onClose, currentProfile }) => {
               </div>
               
               {notifEnabled && (
-                <div className="animate-in slide-in-from-top-2 duration-300">
-                  <label className="block text-[9px] md:text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5 md:mb-2">알림 예약 시간</label>
-                  <div className="relative">
-                    <input 
-                      type="time" 
-                      value={notifTime}
-                      onChange={(e) => setNotifTime(e.target.value)}
-                      className="w-full bg-white border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-2 px-3 md:px-4 text-xs md:text-sm font-bold text-indigo-700 transition-all shadow-sm outline-none"
-                    />
+                <div className="animate-in slide-in-from-top-2 duration-300 space-y-3">
+                  <div>
+                    <label className="block text-[9px] md:text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1.5 md:mb-2">알림 예약 시간</label>
+                    <div className="relative">
+                      <input 
+                        type="time" 
+                        value={notifTime}
+                        onChange={(e) => setNotifTime(e.target.value)}
+                        className="w-full bg-white border-none focus:ring-2 focus:ring-indigo-500 rounded-xl py-2 px-3 md:px-4 text-xs md:text-sm font-bold text-indigo-700 transition-all shadow-sm outline-none"
+                      />
+                    </div>
                   </div>
+                  <button 
+                    type="button"
+                    onClick={handleTestNotification}
+                    className="w-full flex items-center justify-center space-x-2 py-2 bg-white text-indigo-600 text-[11px] font-bold rounded-xl border border-indigo-100 hover:bg-indigo-50 transition-colors"
+                  >
+                    <Send size={12} />
+                    <span>알림 테스트 전송</span>
+                  </button>
                 </div>
               )}
             </div>

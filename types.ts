@@ -48,7 +48,6 @@ export interface UserProfile {
   name: string;
   notifications_enabled: boolean;
   daily_reminder_time: string; // HH:mm
-  gemini_api_key?: string; // 클라우드 동기화용 API 키
 }
 
 export interface BiorhythmData {

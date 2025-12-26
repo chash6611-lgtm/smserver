@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   format, 
   addMonths, 
@@ -12,7 +12,9 @@ import {
   isSameDay, 
   addDays,
   parse,
-  subMinutes
+  subMinutes,
+  isAfter,
+  parseISO
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { 
@@ -44,12 +46,9 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  CalendarDays,
-  Key,
-  AlertCircle,
-  RotateCcw
+  CalendarDays
 } from 'lucide-react';
-import { Lunar } from 'lunar-javascript';
+import { Lunar, Solar } from 'lunar-javascript';
 import { Memo, MemoType, UserProfile, RepeatType, ReminderOffset } from './types.ts';
 import { SOLAR_HOLIDAYS } from './constants.tsx';
 import { 
@@ -67,11 +66,13 @@ import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
+// 한국어 절기 매핑 (간체/번체 모두 대응)
+// Fix: Removed duplicate properties from JIE_QI_MAP on line 72 and standardized keys
 const JIE_QI_MAP: Record<string, string> = {
-  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '春분': '춘분', '淸明': '청명', '穀雨': '곡우',
-  '立夏': '입하', '소滿': '소만', '芒종': '망종', '夏至': '하지', '소暑': '소서', '大暑': '대서',
-  '立秋': '입추', '處暑': '처서', '白露': '백로', '秋분': '추분', '寒露': '한로', '霜강': '상강',
-  '立冬': '입동', '소雪': '소설', '大雪': '대설', '冬至': '동지', '소寒': '소한', '大寒': '대한'
+  '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩', '春分': '춘분', '淸明': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
+  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立秋': '입추', '處暑': '처서', '处暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
+  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
 };
 
 const OFFSET_LABELS: { value: ReminderOffset, label: string }[] = [
@@ -88,11 +89,7 @@ const OFFSET_LABELS: { value: ReminderOffset, label: string }[] = [
 ];
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY') || '';
-  });
-  const [tempKey, setTempKey] = useState('');
-  
+  // Fix: Removed apiKey state and tempKey state as API keys are managed externally.
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [allMemos, setAllMemos] = useState<Memo[]>([]);
@@ -130,6 +127,31 @@ const App: React.FC = () => {
   const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
+  // 한국 표준시(KST) 기준 24절기 계산기
+  const kstJieQiMap = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const terms: Record<string, string> = {};
+    
+    [year - 1, year, year + 1].forEach(y => {
+      const l = Lunar.fromYmd(y, 1, 1);
+      const jieQiTable = l.getJieQiTable();
+      const names = Object.keys(jieQiTable);
+      
+      names.forEach((name: string) => {
+        const solar = (jieQiTable as any)[name] as Solar;
+        if (!solar) return;
+        
+        const dateStr = solar.toYmdHms();
+        const utc8Date = new Date(dateStr.replace(' ', 'T') + '+08:00');
+        const kstDate = new Date(utc8Date.getTime() + (1 * 60 * 60 * 1000));
+        const kstYmd = format(kstDate, 'yyyy-MM-dd');
+        
+        terms[kstYmd] = JIE_QI_MAP[name] || name;
+      });
+    });
+    return terms;
+  }, [currentDate.getFullYear()]);
+
   // 앱 시작 시 데이터 로드
   const initializeApp = useCallback(async () => {
     setLoadingMemos(true);
@@ -138,10 +160,6 @@ const App: React.FC = () => {
       const cloudProfile = await fetchProfileFromCloud();
       if (cloudProfile) {
         setProfile(cloudProfile);
-        if (cloudProfile.gemini_api_key) {
-          setApiKey(cloudProfile.gemini_api_key);
-          localStorage.setItem('GEMINI_API_KEY', cloudProfile.gemini_api_key);
-        }
       }
       const memos = await fetchMemosFromCloud();
       setAllMemos(memos);
@@ -185,7 +203,6 @@ const App: React.FC = () => {
     const data = {
       memos: JSON.stringify(allMemos),
       profile: localStorage.getItem('user_profile'),
-      apiKey: localStorage.getItem('GEMINI_API_KEY'),
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -209,7 +226,6 @@ const App: React.FC = () => {
         const data = JSON.parse(event.target?.result as string);
         if (confirm('설정 및 데이터를 불러오시겠습니까?')) {
           if (data.profile) localStorage.setItem('user_profile', data.profile);
-          if (data.apiKey) localStorage.setItem('GEMINI_API_KEY', data.apiKey);
           alert('복원되었습니다.');
           window.location.reload();
         }
@@ -223,37 +239,51 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkNotifications = () => {
+      if (!profile?.notifications_enabled) return;
+
       const now = new Date();
-      const currentTimeStr = format(now, 'HH:mm');
       const todayStr = format(now, 'yyyy-MM-dd');
 
-      if (profile?.notifications_enabled && currentTimeStr === profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
-        const todayMemos = getFilteredMemos(allMemos, now);
-        const todoCount = todayMemos.filter(m => m.type === MemoType.TODO && !m.completed).length;
-        if (Notification.permission === 'granted') {
-          new Notification('Daily Harmony', {
-            body: `${profile.name}님, 오늘 할 일이 ${todoCount}개 있어요!`,
-          });
-          lastNotificationDate.current = todayStr;
-          localStorage.setItem('last_notif_date', todayStr);
+      // 데일리 리마인더 로직 개선: 설정 시간 '이후'면 알림
+      if (profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
+        const [remH, remM] = profile.daily_reminder_time.split(':').map(Number);
+        const reminderTarget = new Date(now);
+        reminderTarget.setHours(remH, remM, 0, 0);
+
+        if (isAfter(now, reminderTarget)) {
+          const todayMemos = getFilteredMemos(allMemos, now);
+          const todoCount = todayMemos.filter(m => m.type === MemoType.TODO && !m.completed).length;
+          
+          if (Notification.permission === 'granted') {
+            new Notification('Daily Harmony', {
+              body: `${profile.name}님, 오늘 할 일이 ${todoCount}개 있어요!`,
+              icon: './icon.svg'
+            });
+            lastNotificationDate.current = todayStr;
+            localStorage.setItem('last_notif_date', todayStr);
+          }
         }
       }
 
+      // 개별 메모 알림
       if (Notification.permission === 'granted') {
         allMemos.forEach(memo => {
           if (!memo.reminder_time || !memo.reminder_offsets || memo.completed) return;
+          
           const memoDate = parse(memo.date, 'yyyy-MM-dd', new Date());
           const [hours, minutes] = memo.reminder_time.split(':').map(Number);
           const memoDateTime = new Date(memoDate);
           memoDateTime.setHours(hours, minutes, 0, 0);
+
           memo.reminder_offsets.forEach(offset => {
             const notificationTime = subMinutes(memoDateTime, parseInt(offset));
-            const notificationTimeStr = format(notificationTime, 'yyyy-MM-dd HH:mm');
-            const nowStr = format(now, 'yyyy-MM-dd HH:mm');
-            const notificationKey = `${memo.id}-${offset}-${notificationTimeStr}`;
-            if (notificationTimeStr === nowStr && !notifiedMemos.current.has(notificationKey)) {
+            const diffInSeconds = (now.getTime() - notificationTime.getTime()) / 1000;
+            const notificationKey = `${memo.id}-${offset}-${format(notificationTime, 'yyyyMMddHHmm')}`;
+
+            if (diffInSeconds >= 0 && diffInSeconds < 60 && !notifiedMemos.current.has(notificationKey)) {
               new Notification('일정 알림', {
                 body: `${memo.content}`,
+                icon: './icon.svg'
               });
               notifiedMemos.current.add(notificationKey);
               localStorage.setItem('notified_memos', JSON.stringify(Array.from(notifiedMemos.current).slice(-100)));
@@ -262,43 +292,32 @@ const App: React.FC = () => {
         });
       }
     };
-    const intervalId = setInterval(checkNotifications, 30000);
+
+    const intervalId = setInterval(checkNotifications, 20000);
     return () => clearInterval(intervalId);
   }, [profile, allMemos]);
 
   const fetchFortune = useCallback(async () => {
-    if (apiKey && profile) {
+    if (profile) {
       setLoadingFortune(true);
       try {
         const result = await getDailyFortune(
           profile.birth_date, 
           profile.birth_time, 
-          format(selectedDate, 'yyyy-MM-dd'),
-          apiKey
+          format(selectedDate, 'yyyy-MM-dd')
         );
         setFortune(result);
       } catch (err) {
-        setFortune("ERROR: 운세를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
+        setFortune("운세를 불러오지 못했습니다.");
       } finally {
         setLoadingFortune(false);
       }
     }
-  }, [selectedDate, profile, apiKey]);
+  }, [selectedDate, profile]);
 
   useEffect(() => {
     fetchFortune();
   }, [fetchFortune]);
-
-  const handleSaveApiKey = () => {
-    if (tempKey.trim()) {
-      localStorage.setItem('GEMINI_API_KEY', tempKey.trim());
-      setApiKey(tempKey.trim());
-      if (profile) {
-        handleSaveProfile({ ...profile, gemini_api_key: tempKey.trim() });
-      }
-      setTempKey('');
-    }
-  };
 
   const handleAddMemo = async () => {
     if (!newMemo.trim()) return;
@@ -374,10 +393,6 @@ const App: React.FC = () => {
     const savedProfile = await saveProfileCloud(newProfile);
     if (savedProfile) {
       setProfile(savedProfile);
-      if (savedProfile.gemini_api_key) {
-        setApiKey(savedProfile.gemini_api_key);
-        localStorage.setItem('GEMINI_API_KEY', savedProfile.gemini_api_key);
-      }
       setShowProfileModal(false);
     }
     setIsSyncing(false);
@@ -387,18 +402,21 @@ const App: React.FC = () => {
 
   const getDayDetails = useCallback((date: Date) => {
     const lunar = Lunar.fromDate(date);
+    const dateKey = format(date, 'yyyy-MM-dd');
     const mmdd = format(date, 'MM-dd');
+    
     const holiday = SOLAR_HOLIDAYS[mmdd] || null;
-    const rawJieQi = lunar.getJieQi() || null;
-    const jieQi = rawJieQi ? (JIE_QI_MAP[rawJieQi] || rawJieQi) : null;
+    const jieQi = kstJieQiMap[dateKey] || null;
+    
     let dynamicHoliday = null;
     const lm = lunar.getMonth(); const ld = lunar.getDay();
     if (lm === 1 && ld === 1) dynamicHoliday = '설날';
     else if (lm === 1 && ld === 2) dynamicHoliday = '설날 연휴';
     else if (lm === 4 && ld === 8) dynamicHoliday = '부처님오신날';
     else if (lm === 8 && ld === 15) dynamicHoliday = '추석';
+    
     return { holiday, dynamicHoliday, jieQi, lunar };
-  }, []);
+  }, [kstJieQiMap]);
 
   const renderCells = () => {
     const monthStart = startOfMonth(currentDate);
@@ -556,43 +574,11 @@ const App: React.FC = () => {
 
           <div className="bg-white rounded-2xl md:rounded-3xl shadow-xl p-6 md:p-7 border border-gray-50 min-h-[100px]">
             <div className="flex items-center space-x-2 mb-4 md:mb-5"><Sparkles className="text-indigo-500" size={16} md:size={18} /><h3 className="text-base md:text-lg font-black">오늘의 AI 운세</h3></div>
-            {!apiKey ? (
-              <div className="space-y-4">
-                <p className="text-[10px] md:text-xs text-gray-500">운세를 위해 Gemini API 키가 필요합니다.</p>
-                <div className="flex gap-2">
-                  <input type="password" value={tempKey} onChange={(e) => setTempKey(e.target.value)} placeholder="API 키 입력" className="flex-1 bg-gray-50 rounded-xl px-4 py-2 text-[10px] md:text-xs" />
-                  <button onClick={handleSaveApiKey} className="bg-indigo-600 text-white px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold">연결</button>
-                </div>
-              </div>
-            ) : loadingFortune ? (
+            {loadingFortune ? (
               <div className="animate-pulse space-y-2"><div className="h-4 bg-gray-100 rounded w-3/4"></div><div className="h-4 bg-gray-100 rounded w-full"></div></div>
             ) : (
               <div className="space-y-3">
-                {fortune.startsWith("ERROR:") ? (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl space-y-3">
-                    <div className="flex items-center space-x-2 text-rose-600 font-bold text-xs md:text-sm">
-                      <AlertCircle size={16} />
-                      <span>운세 로딩 실패</span>
-                    </div>
-                    <p className="text-rose-700 text-[11px] md:text-xs leading-relaxed font-medium">
-                      {fortune.replace("ERROR: ", "")}
-                    </p>
-                    <button 
-                      onClick={fetchFortune}
-                      className="flex items-center space-x-2 px-3 py-1.5 bg-rose-100 text-rose-700 rounded-lg text-[10px] md:text-xs font-bold hover:bg-rose-200 transition-colors"
-                    >
-                      <RotateCcw size={12} />
-                      <span>다시 시도</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
-                )}
-                {profile?.gemini_api_key && (
-                   <div className="pt-2 flex items-center justify-end text-[8px] md:text-[10px] text-gray-400 font-bold space-x-1">
-                     <Key size={10} /><span>클라우드 동기화된 키 사용 중</span>
-                   </div>
-                )}
+                <div className="text-gray-600 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-medium">{fortune}</div>
               </div>
             )}
           </div>
@@ -671,7 +657,7 @@ const App: React.FC = () => {
                              <Bell size={12} md:size={14} className={editReminderEnabled ? "text-indigo-500" : "text-gray-400"} />
                              <span className="text-[10px] md:text-xs font-bold text-gray-600">알림 예약</span>
                           </div>
-                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
+                          <button onClick={() => setEditReminderEnabled(!editReminderEnabled)} className={`relative inline-flex h-4 md:h-5 w-8 md:w-9 items-center rounded-full transition-colors focus:outline-none ${editReminderEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}><span className={`h-2.5 md:h-3 w-2.5 md:w-3 bg-white rounded-full transition-transform ${editReminderEnabled ? 'translate-x-4 md:translate-x-5' : 'translate-x-1'}`} /></button>
                         </div>
                         {editReminderEnabled && (
                           <div className="animate-in slide-in-from-top-1">

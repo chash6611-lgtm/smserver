@@ -1,9 +1,10 @@
 
-const CACHE_NAME = 'daily-harmony-v4';
+const CACHE_NAME = 'daily-harmony-v1';
 const ASSETS_TO_CACHE = [
-  'index.html',
-  'manifest.json',
-  'icon.svg'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
@@ -12,7 +13,19 @@ self.addEventListener('install', (event) => {
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
-  self.skipWaiting();
+});
+
+self.addEventListener('fetch', (event) => {
+  // Supabase나 Gemini API 요청은 캐시하지 않음
+  if (event.request.url.includes('supabase.co') || event.request.url.includes('googleapis.com')) {
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
+    })
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -21,32 +34,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
       );
-    })
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', (event) => {
-  // 외부 API 및 모듈 요청은 캐싱에서 완전 제외
-  if (
-    event.request.url.includes('supabase.co') || 
-    event.request.url.includes('googleapis.com') ||
-    event.request.url.includes('gstatic.com') ||
-    event.request.url.includes('esm.sh')
-  ) {
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('index.html');
-        }
-      });
     })
   );
 });
