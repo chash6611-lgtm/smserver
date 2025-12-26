@@ -66,13 +66,20 @@ import { getDailyFortune } from './services/geminiService.ts';
 import BiorhythmChart from './components/BiorhythmChart.tsx';
 import ProfileSetup from './components/ProfileSetup.tsx';
 
-// 한국어 절기 매핑 (간체/번체 모두 대응)
-// Fix: Removed duplicate properties from JIE_QI_MAP on line 72 and standardized keys
+// 한국어 절기 매핑 (한자, 간체, 번체 및 영문 Pinyin 대응)
 const JIE_QI_MAP: Record<string, string> = {
+  // 한자 및 간체/번체
   '立春': '입춘', '雨水': '우수', '驚蟄': '경칩', '惊蛰': '경칩', '春分': '춘분', '淸明': '청명', '清明': '청명', '穀雨': '곡우', '谷雨': '곡우',
-  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
+  '立夏': '입하', '小滿': '소만', '小满': '소만', '芒種': '망종', '芒种': '망종', '夏至': '하지', '小暑': '소서', '大暑': '대서',
   '立秋': '입추', '處暑': '처서', '处暑': '처서', '白露': '백로', '秋分': '추분', '寒露': '한로', '霜降': '상강',
-  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한'
+  '立冬': '입동', '小雪': '소설', '大雪': '대설', '冬至': '동지', '小寒': '소한', '大寒': '대한',
+  
+  // 영문 Pinyin (라이브러리 버전에 따라 발생 가능)
+  'DA_XUE': '대설', 'XIAO_XUE': '소설', 'DONG_ZHI': '동지', 'XIAO_HAN': '소한', 'DA_HAN': '대한',
+  'LI_CHUN': '입춘', 'YU_SHUI': '우수', 'JING_ZHE': '경칩', 'CHUN_FEN': '춘분', 'QING_MING': '청명', 'GU_YU': '곡우',
+  'LI_XIA': '입하', 'XIAO_MAN': '소만', 'MANG_ZHONG': '망종', 'XIA_ZHI': '하지', 'XIAO_SHU': '소서', 'DA_SHU': '대서',
+  'LI_QIU': '입추', 'CHU_SHU': '처서', 'BAI_LU': '백로', 'QIU_FEN': '추분', 'HAN_LU': '한로', 'SHUANG_JIANG': '상강',
+  'LI_DONG': '입동'
 };
 
 const OFFSET_LABELS: { value: ReminderOffset, label: string }[] = [
@@ -89,7 +96,6 @@ const OFFSET_LABELS: { value: ReminderOffset, label: string }[] = [
 ];
 
 const App: React.FC = () => {
-  // Fix: Removed apiKey state and tempKey state as API keys are managed externally.
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [allMemos, setAllMemos] = useState<Memo[]>([]);
@@ -127,7 +133,6 @@ const App: React.FC = () => {
   const lastNotificationDate = useRef<string | null>(localStorage.getItem('last_notif_date'));
   const notifiedMemos = useRef<Set<string>>(new Set(JSON.parse(localStorage.getItem('notified_memos') || '[]')));
 
-  // 한국 표준시(KST) 기준 24절기 계산기
   const kstJieQiMap = useMemo(() => {
     const year = currentDate.getFullYear();
     const terms: Record<string, string> = {};
@@ -146,13 +151,13 @@ const App: React.FC = () => {
         const kstDate = new Date(utc8Date.getTime() + (1 * 60 * 60 * 1000));
         const kstYmd = format(kstDate, 'yyyy-MM-dd');
         
+        // JIE_QI_MAP에서 변환하고, 없으면 원래 이름을 사용
         terms[kstYmd] = JIE_QI_MAP[name] || name;
       });
     });
     return terms;
   }, [currentDate.getFullYear()]);
 
-  // 앱 시작 시 데이터 로드
   const initializeApp = useCallback(async () => {
     setLoadingMemos(true);
     setIsSyncing(true);
@@ -244,7 +249,6 @@ const App: React.FC = () => {
       const now = new Date();
       const todayStr = format(now, 'yyyy-MM-dd');
 
-      // 데일리 리마인더 로직 개선: 설정 시간 '이후'면 알림
       if (profile.daily_reminder_time && lastNotificationDate.current !== todayStr) {
         const [remH, remM] = profile.daily_reminder_time.split(':').map(Number);
         const reminderTarget = new Date(now);
@@ -265,7 +269,6 @@ const App: React.FC = () => {
         }
       }
 
-      // 개별 메모 알림
       if (Notification.permission === 'granted') {
         allMemos.forEach(memo => {
           if (!memo.reminder_time || !memo.reminder_offsets || memo.completed) return;
